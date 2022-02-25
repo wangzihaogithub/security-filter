@@ -10,9 +10,73 @@
 
 #### 安装教程
 
-1.  xxxx
-2.  xxxx
-3.  xxxx
+1.  添加maven依赖
+
+        <!-- 登录access_token拦截器 -->
+        <!-- https://mvnrepository.com/artifact/com.github.wangzihaogithub/sse-server -->
+        <dependency>
+            <groupId>com.github.wangzihaogithub</groupId>
+            <artifactId>security-filter</artifactId>
+            <version>1.0.0</version>
+        </dependency>
+        
+2.  实现业务逻辑
+
+        @Component
+        @Slf4j
+        public class HrSecurityAccessFilter extends WebSecurityAccessFilter<Integer, HrAccessUser> {
+            private final LocalCacheService cacheService = new LocalCacheService();
+            @Autowired
+            private CustomerLoginTokenService customerLoginTokenService;
+            @Autowired
+            private CustomerUserService customerUserService;
+        
+            public HrSecurityAccessFilter() {
+                super(Collections.singletonList(CustomerLoginTokenScopeEnum.HR.getTokenName()));
+            }
+        
+            @Override
+            protected boolean isAccessSuccess(HrAccessUser user) {
+                return Objects.equals(user.getStatus(), CustomerUserStatusEnum.NORMAL.getKey())
+                        && Optional.ofNullable(user.getCustomer()).map(Customer::getEnableFlag).orElse(true);
+            }
+        
+            @Override
+            protected Integer selectUserId(HttpServletRequest request, String accessToken) {
+                CustomerLoginToken po = customerLoginTokenService.queryCustomerLoginTokenByToken(accessToken, CustomerLoginTokenScopeEnum.HR.getKey());
+                if (po == null) {
+                    return null;
+                }
+                return po.getCustomerUserId();
+            }
+        
+            @Override
+            protected HrAccessUser selectUser(HttpServletRequest request, Integer userId, String accessToken) {
+                CustomerUserDetailResp resp = cacheService.getIfSet("U" + userId, () -> {
+                    return customerUserService.queryDetailById(userId);
+                }, 20);
+                if (resp == null) {
+                    return null;
+                }
+                return HrAccessUser.convert(request, accessToken, resp);
+            }
+        
+        }
+        
+        
+3.  注册Filter路由
+
+        /**
+         * 只能是customer_user表的用户访问口。 {@link com.ig.hr.common.HrAccessUser}
+         */
+        @Bean
+        public FilterRegistrationBean hrSecurityFilter(HrSecurityAccessFilter filter) {
+            FilterRegistrationBean<HrSecurityAccessFilter> registration = new FilterRegistrationBean<>();
+            registration.setFilter(filter);
+            registration.addUrlPatterns("/api/*", "/statistics/*");
+            return registration;
+        }
+
 
 #### 使用说明
 
