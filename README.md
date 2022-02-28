@@ -10,7 +10,8 @@
 
 #### 安装教程
 
-1.  添加maven依赖
+1.  添加maven依赖, 在pom.xml中加入 [![Maven Central](https://maven-badges.herokuapp.com/maven-central/com.github.wangzihaogithub/security-filter/badge.svg)](https://search.maven.org/search?q=g:com.github.wangzihaogithub%20AND%20a:security-filter)
+
 
         <!-- 登录access_token拦截器 -->
         <!-- https://mvnrepository.com/artifact/com.github.wangzihaogithub/sse-server -->
