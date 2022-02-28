@@ -23,6 +23,7 @@
         
 2.  实现业务逻辑
 
+
         @Component
         @Slf4j
         public class HrSecurityAccessFilter extends WebSecurityAccessFilter<Integer, HrAccessUser> {
@@ -33,7 +34,7 @@
             private CustomerUserService customerUserService;
         
             public HrSecurityAccessFilter() {
-                super(Collections.singletonList(CustomerLoginTokenScopeEnum.HR.getTokenName()));
+                super(Collections.singletonList("access_token"));
             }
         
             @Override
@@ -66,6 +67,7 @@
         
         
 3.  注册Filter路由
+
 
         /**
          * 只能是customer_user表的用户访问口。 {@link com.ig.hr.common.HrAccessUser}
