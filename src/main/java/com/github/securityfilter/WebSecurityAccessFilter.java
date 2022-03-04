@@ -150,6 +150,10 @@ public class WebSecurityAccessFilter<USER_ID, ACCESS_USER> implements Filter {
         return REQUEST_THREAD_LOCAL.get();
     }
 
+    public Set<String> getAccessTokenParameterNames() {
+        return accessTokenParameterNames;
+    }
+
     protected boolean isAccessSuccess(ACCESS_USER accessUser) {
         return true;
     }
