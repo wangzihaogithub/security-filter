@@ -11,6 +11,7 @@ import java.lang.reflect.Constructor;
 import java.lang.reflect.Method;
 import java.nio.charset.StandardCharsets;
 import java.util.*;
+import java.util.concurrent.Callable;
 import java.util.function.Supplier;
 
 /**
@@ -128,6 +129,26 @@ public class WebSecurityAccessFilter<USER_ID, ACCESS_USER> implements Filter {
             }
         }
         return result.toArray(new String[0]);
+    }
+
+    public static <ACCESS_USER> void runOnCurrentUser(ACCESS_USER accessUser, Runnable runnable) {
+        Object old = getCurrentAccessUser();
+        try {
+            setCurrentUser(accessUser);
+            runnable.run();
+        } finally {
+            setCurrentUser(old);
+        }
+    }
+
+    public static <ACCESS_USER, RESULT> RESULT runOnCurrentUser(ACCESS_USER accessUser, Callable<RESULT> callable) throws Exception {
+        Object old = getCurrentAccessUser();
+        try {
+            setCurrentUser(accessUser);
+            return callable.call();
+        } finally {
+            setCurrentUser(old);
+        }
     }
 
     private static String getCookieValue(Cookie[] cookies, String name) {
