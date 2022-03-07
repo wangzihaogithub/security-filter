@@ -59,14 +59,20 @@ public class WebSecurityAccessFilter<USER_ID, ACCESS_USER> implements Filter {
     }
 
     public static <ACCESS_USER> ACCESS_USER getCurrentAccessUser(HttpServletRequest request) {
+        ACCESS_USER accessUser = null;
         if (request == null) {
             request = getCurrentRequest();
         }
-        if (request == null) {
-            return null;
+        if (request != null) {
+            accessUser = (ACCESS_USER) request.getAttribute(REQUEST_ATTR_NAME);
         }
-        ACCESS_USER accessUser = (ACCESS_USER) request.getAttribute(REQUEST_ATTR_NAME);
-        return accessUser;
+        if (accessUser == null || accessUser == NULL) {
+            Supplier<Object> accessUserSupplier = ACCESS_USER_THREAD_LOCAL.get();
+            if (accessUserSupplier != null) {
+                accessUser = (ACCESS_USER) accessUserSupplier.get();
+            }
+        }
+        return accessUser == NULL ? null : accessUser;
     }
 
     public static <ACCESS_USER> ACCESS_USER getCurrentAccessUser() {
