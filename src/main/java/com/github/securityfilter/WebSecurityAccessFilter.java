@@ -1,6 +1,8 @@
 package com.github.securityfilter;
 
 import com.github.securityfilter.util.BeanMap;
+import com.github.securityfilter.util.SpringUtil;
+import com.github.securityfilter.util.Util;
 
 import javax.servlet.*;
 import javax.servlet.http.Cookie;
@@ -31,6 +33,7 @@ public class WebSecurityAccessFilter<USER_ID, ACCESS_USER> implements Filter {
     private static final ThreadLocal<HttpServletRequest> REQUEST_THREAD_LOCAL = new ThreadLocal<>();
     private static final Constructor JACKSON_OBJECT_MAPPER_CONSTRUCTOR;
     private static final Method JACKSON_WRITE_VALUE_AS_BYTES_METHOD;
+    private static WebSecurityAccessFilter INSTANCE;
 
     static {
         Constructor<?> jacksonObjectMapperConstructor;
@@ -56,6 +59,22 @@ public class WebSecurityAccessFilter<USER_ID, ACCESS_USER> implements Filter {
 
     public WebSecurityAccessFilter(Collection<String> accessTokenKeys) {
         this.accessTokenParameterNames.addAll(accessTokenKeys);
+        INSTANCE = this;
+    }
+
+    public static <ACCESS_USER> ACCESS_USER getCurrentAccessUserIfNew(HttpServletRequest request) {
+        if (request == null) {
+            request = getCurrentRequest();
+        }
+        Object user = WebSecurityAccessFilter.getCurrentAccessUser(request);
+        if (user == null && INSTANCE != null) {
+            INSTANCE.initAccessUser(request);
+        }
+        return WebSecurityAccessFilter.getCurrentAccessUser(request);
+    }
+
+    public static <ACCESS_USER> ACCESS_USER getCurrentAccessUserIfNew() {
+        return WebSecurityAccessFilter.getCurrentAccessUser(null);
     }
 
     public static <ACCESS_USER> ACCESS_USER getCurrentAccessUser(HttpServletRequest request) {
@@ -174,7 +193,15 @@ public class WebSecurityAccessFilter<USER_ID, ACCESS_USER> implements Filter {
     }
 
     public static HttpServletRequest getCurrentRequest() {
-        return REQUEST_THREAD_LOCAL.get();
+        HttpServletRequest request = REQUEST_THREAD_LOCAL.get();
+        if (request == null && Util.EXIST_SPRING_WEB) {
+            request = getCurrentRequestSpring();
+        }
+        return request;
+    }
+
+    public static HttpServletRequest getCurrentRequestSpring() {
+        return SpringUtil.getCurrentRequest();
     }
 
     public Set<String> getAccessTokenParameterNames() {
@@ -309,6 +336,14 @@ public class WebSecurityAccessFilter<USER_ID, ACCESS_USER> implements Filter {
         } else {
             return toJsonBytes(body);
         }
+    }
+
+    public <T> T getJacksonObjectMapper() {
+        return (T) jacksonObjectMapper;
+    }
+
+    public void setJacksonObjectMapper(Object jacksonObjectMapper) {
+        this.jacksonObjectMapper = jacksonObjectMapper;
     }
 
     public byte[] toJsonBytes(Object body) {
