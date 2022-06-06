@@ -74,7 +74,7 @@ public class WebSecurityAccessFilter<USER_ID, ACCESS_USER> implements Filter {
     }
 
     public static <ACCESS_USER> ACCESS_USER getCurrentAccessUserIfNew() {
-        return WebSecurityAccessFilter.getCurrentAccessUser(null);
+        return WebSecurityAccessFilter.getCurrentAccessUserIfNew(null);
     }
 
     public static <ACCESS_USER> ACCESS_USER getCurrentAccessUser(HttpServletRequest request) {
