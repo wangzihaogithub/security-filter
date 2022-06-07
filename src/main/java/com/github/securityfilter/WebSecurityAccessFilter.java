@@ -62,22 +62,35 @@ public class WebSecurityAccessFilter<USER_ID, ACCESS_USER> implements Filter {
         INSTANCE = this;
     }
 
-    public static <ACCESS_USER> ACCESS_USER getCurrentAccessUserIfNew(HttpServletRequest request) {
+    public static <ACCESS_USER> ACCESS_USER getCurrentAccessUserIfCreate(HttpServletRequest request, WebSecurityAccessFilter instance) {
         if (request == null) {
             request = getCurrentRequest();
         }
-        Object user = WebSecurityAccessFilter.getCurrentAccessUser(request);
-        if (user == null && INSTANCE != null) {
-            INSTANCE.initAccessUser(request);
+        ACCESS_USER user = getCurrentAccessUserExist(request);
+        if (user == NULL) {
+            return null;
+        } else if (user == null && instance != null) {
+            instance.initAccessUser(request);
+            return getCurrentAccessUser(request);
+        } else {
+            return user;
         }
-        return WebSecurityAccessFilter.getCurrentAccessUser(request);
     }
 
-    public static <ACCESS_USER> ACCESS_USER getCurrentAccessUserIfNew() {
-        return WebSecurityAccessFilter.getCurrentAccessUserIfNew(null);
+    public static <ACCESS_USER> ACCESS_USER getCurrentAccessUserIfCreate(HttpServletRequest request) {
+        return getCurrentAccessUserIfCreate(request, INSTANCE);
+    }
+
+    public static <ACCESS_USER> ACCESS_USER getCurrentAccessUserIfCreate() {
+        return getCurrentAccessUserIfCreate(null, INSTANCE);
     }
 
     public static <ACCESS_USER> ACCESS_USER getCurrentAccessUser(HttpServletRequest request) {
+        ACCESS_USER accessUser = getCurrentAccessUserExist(request);
+        return accessUser == NULL ? null : accessUser;
+    }
+
+    public static <ACCESS_USER> ACCESS_USER getCurrentAccessUserExist(HttpServletRequest request) {
         ACCESS_USER accessUser = null;
         if (request == null) {
             request = getCurrentRequest();
@@ -91,7 +104,7 @@ public class WebSecurityAccessFilter<USER_ID, ACCESS_USER> implements Filter {
                 accessUser = (ACCESS_USER) accessUserSupplier.get();
             }
         }
-        return accessUser == NULL ? null : accessUser;
+        return accessUser;
     }
 
     public static <ACCESS_USER> ACCESS_USER getCurrentAccessUser() {
@@ -313,6 +326,9 @@ public class WebSecurityAccessFilter<USER_ID, ACCESS_USER> implements Filter {
             }
         } finally {
             setCurrentUser(null);
+        }
+        if (accessUser == null) {
+            request.setAttribute(REQUEST_ATTR_NAME, NULL);
         }
         return accessUser;
     }
