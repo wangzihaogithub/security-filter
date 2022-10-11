@@ -62,6 +62,42 @@ public class WebSecurityAccessFilter<USER_ID, ACCESS_USER> implements Filter {
         INSTANCE = this;
     }
 
+    public static String getAccessTokenParameterName() {
+        WebSecurityAccessFilter<?, ?> instance = INSTANCE;
+        if (instance != null) {
+            Set<String> accessTokenParameterNames = instance.getAccessTokenParameterNames();
+            if (!accessTokenParameterNames.isEmpty()) {
+                return accessTokenParameterNames.iterator().next();
+            }
+        }
+        return DEFAULT_ACCESS_TOKEN_PARAMETER_NAME;
+    }
+
+    public static Set<String> getAccessTokenParameterNameSet() {
+        WebSecurityAccessFilter<?, ?> instance = INSTANCE;
+        if (instance != null) {
+            return instance.getAccessTokenParameterNames();
+        } else {
+            return Collections.singleton(DEFAULT_ACCESS_TOKEN_PARAMETER_NAME);
+        }
+    }
+
+    public static String[] getAccessTokens() {
+        WebSecurityAccessFilter instance = INSTANCE;
+        String[] accessTokens;
+        if (instance != null) {
+            accessTokens = instance.getAccessTokens(null);
+        } else {
+            accessTokens = getAccessTokens(null, Collections.emptyList());
+        }
+        return accessTokens;
+    }
+
+    public static String getAccessToken() {
+        String[] accessTokens = getAccessTokens();
+        return accessTokens.length == 0 ? null : accessTokens[0];
+    }
+
     public static <ACCESS_USER> ACCESS_USER getCurrentAccessUserIfCreate(HttpServletRequest request, WebSecurityAccessFilter instance) {
         if (request == null) {
             request = getCurrentRequest();
