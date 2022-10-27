@@ -3,6 +3,8 @@ package com.github.securityfilter.util;
 public class Util {
     public static final boolean EXIST_SPRING_WEB;
     public static final boolean EXIST_HTTP_SERVLET;
+    public static final boolean EXIST_DUBBO_APACHE;
+    public static final boolean EXIST_DUBBO_ALIBABA;
 
     static {
         boolean existSpringWeb;
@@ -22,5 +24,24 @@ public class Util {
             existHttpServlet = false;
         }
         EXIST_HTTP_SERVLET = existHttpServlet;
+
+        boolean existDubboAlibaba;
+        try {
+            Class.forName("com.alibaba.dubbo.rpc.Filter");
+            existDubboAlibaba = true;
+        } catch (Throwable e) {
+            existDubboAlibaba = false;
+        }
+        EXIST_DUBBO_ALIBABA = existDubboAlibaba;
+
+
+        boolean existDubboApache;
+        try {
+            Class.forName("org.apache.dubbo.rpc.Filter");
+            existDubboApache = true;
+        } catch (Throwable e) {
+            existDubboApache = false;
+        }
+        EXIST_DUBBO_APACHE = existDubboApache;
     }
 }
