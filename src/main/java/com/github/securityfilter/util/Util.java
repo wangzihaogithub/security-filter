@@ -34,7 +34,6 @@ public class Util {
         }
         EXIST_DUBBO_ALIBABA = existDubboAlibaba;
 
-
         boolean existDubboApache;
         try {
             Class.forName("org.apache.dubbo.rpc.Filter");

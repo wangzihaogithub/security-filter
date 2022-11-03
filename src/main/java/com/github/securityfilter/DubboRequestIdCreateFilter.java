@@ -19,7 +19,7 @@ public class DubboRequestIdCreateFilter implements Filter {
     private static final SnowflakeIdWorker ID_WORKER = new SnowflakeIdWorker();
     private static final Supplier<String> REQUEST_ID_SUPPLIER = () -> String.valueOf(ID_WORKER.nextId());
     private static final String ATTR_REQUEST_ID = "requestId";
-    private String[] skipInterfacePackets = {"org.apache", "com.alibaba"};
+    private final String[] skipInterfacePackets = {"org.apache", "com.alibaba"};
 
     public static String getRequestId(boolean create) {
         return getRequestId(create, null);
