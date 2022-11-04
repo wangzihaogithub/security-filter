@@ -25,6 +25,9 @@ import java.util.function.Supplier;
 public class WebSecurityAccessFilter<USER_ID, ACCESS_USER> implements Filter {
     public static final String REQUEST_ATTR_NAME = "user";
     public static final String DEFAULT_ACCESS_TOKEN_PARAMETER_NAME = "access_token";
+    /**
+     * 防止嵌套调用
+     */
     public static final Object NULL = new Object();
     /**
      * 跨线程传递当前RPC请求的用户

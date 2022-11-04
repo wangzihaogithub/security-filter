@@ -12,24 +12,24 @@ import static org.apache.dubbo.common.constants.CommonConstants.CONSUMER;
  */
 @Activate(group = {CONSUMER}, order = 50)
 public class DubboWebRequestIdCreateFilter extends WebRequestIdCreateFilter implements Filter {
-    private String[] skipInterfacePackets = {"org.apache","com.alibaba"};
+    private final String[] skipInterfacePackets = {"org.apache.dubbo", "com.alibaba"};
 
     @Override
     public Result invoke(Invoker<?> invoker, Invocation invocation) throws RpcException {
         String interfaceName = invoker.getInterface().getName();
         for (String skipInterfacePacket : skipInterfacePackets) {
-            if(interfaceName.startsWith(skipInterfacePacket)) {
+            if (interfaceName.startsWith(skipInterfacePacket)) {
                 return invoker.invoke(invocation);
             }
         }
         String requestId = getRequestId(null, true);
-        RpcContext.getContext().setAttachment(ATTR_REQUEST_ID,requestId);
+        RpcContext.getContext().setAttachment(ATTR_REQUEST_ID, requestId);
         return invoker.invoke(invocation);
     }
 
     @Override
     public void createRequestIdAfter(HttpServletRequest request, String requestId) {
-        RpcContext.getContext().setAttachment(ATTR_REQUEST_ID,requestId);
+        RpcContext.getContext().setAttachment(ATTR_REQUEST_ID, requestId);
     }
 
     @Override

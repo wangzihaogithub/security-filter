@@ -9,7 +9,7 @@ import org.apache.dubbo.rpc.*;
         group = {"consumer"},
         order = 51
 )
-public class DubboWebAccessUserFilter implements Filter {
+public class DubboAccessUserFilter implements Filter {
 
     @Override
     public Result invoke(Invoker<?> invoker, Invocation invocation) throws RpcException {

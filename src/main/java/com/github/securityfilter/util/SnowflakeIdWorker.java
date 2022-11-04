@@ -2,20 +2,6 @@ package com.github.securityfilter.util;
 
 import java.util.Random;
 
-/**
- * Twitter_Snowflake
- * The structure of SnowFlake is as follows (each part is separated by -):
- * 0-0000000000 0000000000 0000000000 0-0000-0000-000000000
- * 1 bit id. Since the long base type is signed in Java, the highest bit is the sign bit, positive is 0, negative is 1, so id is generally positive, and the highest bit is 0
- * 41-bit time cutoff (in milliseconds). Note that the 41-bit time cutoff does not store the current time cutoff, but rather the difference in the current time cutoff (current time cutoff - start time cutoff).
- * , the starting time intercept, which is generally the time our id generator starts to use, is specified by our program (startTime attribute of IdWorker class below). The 41-bit time slice, which can be used for 69 years,
- * 10-bit data machine bits, which can be deployed on 1024 nodes, including 5-bit datacenterId and 5-bit workerId
- * 12-bit sequence, counting in milliseconds, 12-bit counting serial number supports each node to generate 4096 ID serial Numbers  per millisecond (same machine, same time slice)
- * adds up to exactly 64 bits, making it a Long.
- * the advantage of SnowFlake is that it will sort itself in terms of time on the whole, and will not produce ID collisions across the distributed system (separated by data center ids and machine ids), and it will be highly efficient. As tested, SnowFlake will generate about 260,000 ids per second.
- *
- * @author wangzihao
- */
 public class SnowflakeIdWorker {
 
     // ==============================Fields===========================================
@@ -72,12 +58,12 @@ public class SnowflakeIdWorker {
     /**
      * Working machine ID(0~31)
      */
-    private long workerId;
+    private final long workerId;
 
     /**
      * Data center ID(0~31)
      */
-    private long datacenterId;
+    private final long datacenterId;
 
     /**
      * Millisecond sequence(0~4095)
@@ -116,27 +102,6 @@ public class SnowflakeIdWorker {
     }
 
     // ==============================Methods==========================================
-
-    /**
-     * test
-     *
-     * @param args args
-     */
-    public static void main(String[] args) {
-        SnowflakeIdWorker idWorker = new SnowflakeIdWorker();
-        System.out.println(idWorker.workerId);
-        System.out.println(idWorker.datacenterId);
-        for (int i = 0; i < 1000; i++) {
-
-            long id = idWorker.nextId();
-//            System.out.println(Long.toBinaryString(id));
-            System.out.println(id);
-        }
-    }
-
-    public String nextIdString() {
-        return String.valueOf(nextId());
-    }
 
     /**
      * Get the next ID

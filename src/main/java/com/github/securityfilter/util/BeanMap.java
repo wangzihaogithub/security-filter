@@ -618,7 +618,7 @@ public class BeanMap extends LinkedHashMap<String, Object> {
             @Override
             public Iterator<Map.Entry<String, Object>> iterator() {
                 return new Iterator<Map.Entry<String, Object>>() {
-                    private Iterator<String> iter = new LinkedHashSet<>(BeanMap.super.keySet()).iterator();
+                    private final Iterator<String> iter = new LinkedHashSet<>(BeanMap.super.keySet()).iterator();
                     private Node currentNode;
 
                     @Override
@@ -653,7 +653,7 @@ public class BeanMap extends LinkedHashMap<String, Object> {
             @Override
             public Iterator<Object> iterator() {
                 return new Iterator<Object>() {
-                    private Iterator<String> iter = new LinkedHashSet<>(BeanMap.super.keySet()).iterator();
+                    private final Iterator<String> iter = new LinkedHashSet<>(BeanMap.super.keySet()).iterator();
                     private String currentKey;
 
                     @Override
@@ -732,7 +732,7 @@ public class BeanMap extends LinkedHashMap<String, Object> {
 
     public static class SoftHashMap<K, V> extends AbstractMap<K, V> {
         private final Map<K, SpecialValue> map = new HashMap<>();
-        private ReferenceQueue<? super V> rq = new ReferenceQueue<>();
+        private final ReferenceQueue<? super V> rq = new ReferenceQueue<>();
 
         @SuppressWarnings("unchecked")
         private void processQueue() {

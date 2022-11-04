@@ -63,13 +63,18 @@ public class AccessUserUtil {
         if (accessUser == null) {
             value = null;
         } else {
-            Map accessUserGetterMap = BeanMap.toMap(accessUser);
+            Map accessUserGetterMap;
+            if (accessUser instanceof Map) {
+                accessUserGetterMap = (Map) accessUser;
+            } else {
+                accessUserGetterMap = new BeanMap(accessUser);
+            }
             value = Objects.toString(accessUserGetterMap.get(attrName), null);
         }
         return value;
     }
 
-    public static void removeAccessUser(Object accessUser) {
+    public static void removeAccessUser() {
         setAccessUser(null);
     }
 
