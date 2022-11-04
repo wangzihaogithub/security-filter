@@ -62,8 +62,8 @@ public class DubboAccessUserUtil {
         return result.isEmpty() ? null : result;
     }
 
-    public static Map<String, Object> getAlibabaAccessUser() {
-        Map<String, Object> result = new LinkedHashMap<>();
+    public static Map<String, String> getAlibabaAccessUser() {
+        Map<String, String> result = new LinkedHashMap<>();
         for (String attrName : new ArrayList<>(com.alibaba.dubbo.rpc.RpcContext.getContext().getAttachments().keySet())) {
             if (isUserAttr(attrName)) {
                 result.put(attrName, com.alibaba.dubbo.rpc.RpcContext.getContext().getAttachment(attrName));
