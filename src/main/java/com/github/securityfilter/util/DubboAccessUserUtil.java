@@ -117,6 +117,9 @@ public class DubboAccessUserUtil {
     }
 
     public static boolean isBaseType(Object value) {
+        if (value == null) {
+            return false;
+        }
         return value.getClass().isPrimitive()
                 || value instanceof Number
                 || value instanceof CharSequence
