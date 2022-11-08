@@ -24,20 +24,24 @@ public class DubboAccessUserUtil {
         return attrName != null && attrName.startsWith(ATTR_PREFIX);
     }
 
-    private static String wrapAttrName(String attrName) {
-        return ATTR_PREFIX + attrName;
+    private static String wrapUserAttrName(String attrName) {
+        if (isUserAttr(attrName)) {
+            return attrName;
+        } else {
+            return ATTR_PREFIX + attrName;
+        }
     }
 
     public static Object getApacheAccessUserValue(String name) {
         if (SUPPORT_GET_OBJECT_ATTACHMENT) {
-            return RpcContext.getContext().getObjectAttachment(wrapAttrName(name));
+            return RpcContext.getContext().getObjectAttachment(wrapUserAttrName(name));
         } else {
-            return RpcContext.getContext().getAttachment(wrapAttrName(name));
+            return RpcContext.getContext().getAttachment(wrapUserAttrName(name));
         }
     }
 
     public static String getAlibabaAccessUserValue(String name) {
-        return com.alibaba.dubbo.rpc.RpcContext.getContext().getAttachment(wrapAttrName(name));
+        return com.alibaba.dubbo.rpc.RpcContext.getContext().getAttachment(wrapUserAttrName(name));
     }
 
     public static Map<String, Object> getApacheAccessUser() {
@@ -100,7 +104,7 @@ public class DubboAccessUserUtil {
             Object key = entry.getKey();
             Object value = entry.getValue();
             if (key instanceof String && isBaseType(value)) {
-                RpcContext.getContext().setAttachment(wrapAttrName((String) key), value);
+                RpcContext.getContext().setAttachment(wrapUserAttrName((String) key), value);
             }
         }
     }
@@ -111,7 +115,7 @@ public class DubboAccessUserUtil {
             Object key = entry.getKey();
             Object value = entry.getValue();
             if (key instanceof String && isBaseType(value)) {
-                com.alibaba.dubbo.rpc.RpcContext.getContext().setAttachment(wrapAttrName((String) key), Objects.toString(value, null));
+                com.alibaba.dubbo.rpc.RpcContext.getContext().setAttachment(wrapUserAttrName((String) key), Objects.toString(value, null));
             }
         }
     }
