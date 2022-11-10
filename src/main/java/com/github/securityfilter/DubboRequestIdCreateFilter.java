@@ -8,13 +8,10 @@ import org.slf4j.MDC;
 
 import java.util.function.Supplier;
 
-import static org.apache.dubbo.common.constants.CommonConstants.CONSUMER;
-import static org.apache.dubbo.common.constants.CommonConstants.PROVIDER;
-
 /**
  * 创建requestId
  */
-@Activate(group = {CONSUMER, PROVIDER}, order = Integer.MIN_VALUE + 100)
+@Activate(group = {"consumer", "provider"}, order = Integer.MIN_VALUE + 100)
 public class DubboRequestIdCreateFilter implements Filter {
     private static final SnowflakeIdWorker ID_WORKER = new SnowflakeIdWorker();
     private static final Supplier<String> REQUEST_ID_SUPPLIER = () -> String.valueOf(ID_WORKER.nextId());

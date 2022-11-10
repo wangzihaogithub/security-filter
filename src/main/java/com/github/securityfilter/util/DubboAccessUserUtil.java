@@ -6,7 +6,7 @@ import java.time.temporal.TemporalAccessor;
 import java.util.*;
 
 public class DubboAccessUserUtil {
-    public static String ATTR_PREFIX = "_user.";
+    public static final String ATTR_PREFIX = System.getProperty("DubboAccessUserUtil.ATTR_PREFIX", "_user") + ".";
     private static final boolean SUPPORT_GET_OBJECT_ATTACHMENT;
 
     static {
@@ -118,6 +118,14 @@ public class DubboAccessUserUtil {
                 com.alibaba.dubbo.rpc.RpcContext.getContext().setAttachment(wrapUserAttrName((String) key), Objects.toString(value, null));
             }
         }
+    }
+
+    public static void setApacheAccessUserValue(String attrName, Object value) {
+        RpcContext.getContext().setAttachment(wrapUserAttrName(attrName), value);
+    }
+
+    public static void setAlibabaAccessUserValue(String attrName, Object value) {
+        com.alibaba.dubbo.rpc.RpcContext.getContext().setAttachment(wrapUserAttrName(attrName), Objects.toString(value, null));
     }
 
     public static boolean isBaseType(Object value) {

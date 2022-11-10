@@ -1,16 +1,15 @@
 package com.github.securityfilter;
 
 import com.github.securityfilter.util.BeanMap;
+import com.github.securityfilter.util.PlatformDependentUtil;
 import com.github.securityfilter.util.SpringUtil;
-import com.github.securityfilter.util.Util;
 
 import javax.servlet.*;
 import javax.servlet.http.Cookie;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 import java.io.IOException;
-import java.lang.reflect.Constructor;
-import java.lang.reflect.Method;
+import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 import java.util.*;
 import java.util.concurrent.Callable;
@@ -34,24 +33,7 @@ public class WebSecurityAccessFilter<USER_ID, ACCESS_USER> implements Filter {
      */
     private static final ThreadLocal<Supplier<Object>> ACCESS_USER_THREAD_LOCAL = new ThreadLocal<>();
     private static final ThreadLocal<HttpServletRequest> REQUEST_THREAD_LOCAL = new ThreadLocal<>();
-    private static final Constructor JACKSON_OBJECT_MAPPER_CONSTRUCTOR;
-    private static final Method JACKSON_WRITE_VALUE_AS_BYTES_METHOD;
     private static WebSecurityAccessFilter INSTANCE;
-
-    static {
-        Constructor<?> jacksonObjectMapperConstructor;
-        Method writeValueAsBytesMethod;
-        try {
-            Class<?> objectMapperClass = Class.forName("com.fasterxml.jackson.databind.ObjectMapper");
-            jacksonObjectMapperConstructor = objectMapperClass.getConstructor();
-            writeValueAsBytesMethod = objectMapperClass.getMethod("writeValueAsBytes", Object.class);
-        } catch (Exception e) {
-            jacksonObjectMapperConstructor = null;
-            writeValueAsBytesMethod = null;
-        }
-        JACKSON_OBJECT_MAPPER_CONSTRUCTOR = jacksonObjectMapperConstructor;
-        JACKSON_WRITE_VALUE_AS_BYTES_METHOD = writeValueAsBytesMethod;
-    }
 
     private final Set<String> accessTokenParameterNames = new LinkedHashSet<>();
     private Object jacksonObjectMapper;
@@ -125,11 +107,19 @@ public class WebSecurityAccessFilter<USER_ID, ACCESS_USER> implements Filter {
     }
 
     public static <ACCESS_USER> ACCESS_USER getCurrentAccessUser(HttpServletRequest request) {
-        ACCESS_USER accessUser = getCurrentAccessUserExist(request);
+        ACCESS_USER accessUser = getCurrentAccessUserIfExist(request);
         return accessUser == NULL ? null : accessUser;
     }
 
+    public static <ACCESS_USER> ACCESS_USER getCurrentAccessUserIfExist() {
+        return getCurrentAccessUserIfExist(null);
+    }
+
     public static <ACCESS_USER> ACCESS_USER getCurrentAccessUserExist(HttpServletRequest request) {
+        return getCurrentAccessUserIfExist(request);
+    }
+
+    public static <ACCESS_USER> ACCESS_USER getCurrentAccessUserIfExist(HttpServletRequest request) {
         ACCESS_USER accessUser = null;
         if (request == null) {
             request = getCurrentRequest();
@@ -228,6 +218,31 @@ public class WebSecurityAccessFilter<USER_ID, ACCESS_USER> implements Filter {
         }
     }
 
+    public static boolean setCurrentAccessUserValue(String attrName, Object value) {
+        Object accessUserIfExist = getCurrentAccessUserIfExist(null);
+        return invokeSetter(accessUserIfExist, attrName, value);
+    }
+
+    private static boolean invokeSetter(Object accessUser, String attrName, Object value) {
+        if (accessUser == null) {
+            return false;
+        } else if (accessUser instanceof BeanMap) {
+            BeanMap setterMap = (BeanMap) accessUser;
+            return setterMap.set(attrName, value);
+        } else if (accessUser instanceof Map) {
+            try {
+                Map setterMap = (Map) accessUser;
+                setterMap.put(attrName, value);
+                return true;
+            } catch (UnsupportedOperationException | IllegalStateException e) {
+                return false;
+            }
+        } else {
+            BeanMap setterMap = new BeanMap(accessUser);
+            return setterMap.set(attrName, value);
+        }
+    }
+
     private static String getCookieValue(Cookie[] cookies, String name) {
         if (cookies == null) {
             return null;
@@ -246,7 +261,7 @@ public class WebSecurityAccessFilter<USER_ID, ACCESS_USER> implements Filter {
 
     public static HttpServletRequest getCurrentRequest() {
         HttpServletRequest request = REQUEST_THREAD_LOCAL.get();
-        if (request == null && Util.EXIST_SPRING_WEB) {
+        if (request == null && PlatformDependentUtil.EXIST_SPRING_WEB) {
             request = getCurrentRequestSpring();
         }
         return request;
@@ -402,20 +417,31 @@ public class WebSecurityAccessFilter<USER_ID, ACCESS_USER> implements Filter {
     }
 
     public byte[] toJsonBytes(Object body) {
-        if (JACKSON_WRITE_VALUE_AS_BYTES_METHOD != null && jacksonObjectMapper == null) {
+        if (PlatformDependentUtil.JACKSON_WRITE_VALUE_AS_BYTES_METHOD != null && jacksonObjectMapper == null) {
             try {
-                jacksonObjectMapper = JACKSON_OBJECT_MAPPER_CONSTRUCTOR.newInstance();
+                jacksonObjectMapper = PlatformDependentUtil.JACKSON_OBJECT_MAPPER_CONSTRUCTOR.newInstance();
             } catch (Exception ignored) {
             }
         }
 
         byte[] bytes = null;
-        if (jacksonObjectMapper != null && JACKSON_WRITE_VALUE_AS_BYTES_METHOD != null) {
+        if (jacksonObjectMapper != null && PlatformDependentUtil.JACKSON_WRITE_VALUE_AS_BYTES_METHOD != null) {
             try {
-                bytes = (byte[]) JACKSON_WRITE_VALUE_AS_BYTES_METHOD.invoke(jacksonObjectMapper, body);
+                bytes = (byte[]) PlatformDependentUtil.JACKSON_WRITE_VALUE_AS_BYTES_METHOD.invoke(jacksonObjectMapper, body);
             } catch (Exception ignored) {
             }
         }
+
+        if (PlatformDependentUtil.FASTJSON_TO_JSON_STRING_METHOD != null) {
+            try {
+                Object jsonString = PlatformDependentUtil.FASTJSON_TO_JSON_STRING_METHOD.invoke(null, body);
+                if (jsonString instanceof String) {
+                    bytes = ((String) jsonString).getBytes(Charset.forName("UTF-8"));
+                }
+            } catch (Exception ignored) {
+            }
+        }
+
         if (bytes == null) {
             throw new IllegalStateException("no support json serialization. need user impl method toJsonBytes(body)");
         }

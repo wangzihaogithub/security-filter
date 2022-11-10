@@ -3,19 +3,33 @@ package com.github.securityfilter.util;
 import com.github.securityfilter.WebSecurityAccessFilter;
 
 import java.util.Map;
-import java.util.Objects;
+import java.util.concurrent.Callable;
 
 public class AccessUserUtil {
 
     public static Object getAccessUser() {
         Object value = null;
-        if (Util.EXIST_HTTP_SERVLET) {
+        if (PlatformDependentUtil.EXIST_HTTP_SERVLET) {
             value = WebSecurityAccessFilter.getCurrentAccessUserIfCreate();
         }
-        if (Util.EXIST_DUBBO_APACHE && value == null) {
+        if (PlatformDependentUtil.EXIST_DUBBO_APACHE && value == null) {
             value = DubboAccessUserUtil.getApacheAccessUser();
         }
-        if (Util.EXIST_DUBBO_ALIBABA && value == null) {
+        if (PlatformDependentUtil.EXIST_DUBBO_ALIBABA && value == null) {
+            value = DubboAccessUserUtil.getAlibabaAccessUser();
+        }
+        return value;
+    }
+
+    public static Object getAccessUserIfExist() {
+        Object value = null;
+        if (PlatformDependentUtil.EXIST_HTTP_SERVLET) {
+            value = WebSecurityAccessFilter.getCurrentAccessUserExist(null);
+        }
+        if (PlatformDependentUtil.EXIST_DUBBO_APACHE && value == null) {
+            value = DubboAccessUserUtil.getApacheAccessUser();
+        }
+        if (PlatformDependentUtil.EXIST_DUBBO_ALIBABA && value == null) {
             value = DubboAccessUserUtil.getAlibabaAccessUser();
         }
         return value;
@@ -23,42 +37,87 @@ public class AccessUserUtil {
 
     public static Object getAccessUserValue(String attrName) {
         Object value = null;
-        if (Util.EXIST_HTTP_SERVLET) {
+        if (PlatformDependentUtil.EXIST_HTTP_SERVLET) {
             value = getWebAccessUserValue(attrName);
         }
-        if (Util.EXIST_DUBBO_APACHE && value == null) {
+        if (PlatformDependentUtil.EXIST_DUBBO_APACHE && value == null) {
             value = DubboAccessUserUtil.getApacheAccessUserValue(attrName);
         }
-        if (Util.EXIST_DUBBO_ALIBABA && value == null) {
+        if (PlatformDependentUtil.EXIST_DUBBO_ALIBABA && value == null) {
             value = DubboAccessUserUtil.getAlibabaAccessUserValue(attrName);
         }
         return value;
     }
 
-    public static void setAccessUser(Object accessUser) {
-        if (Util.EXIST_HTTP_SERVLET) {
-            WebSecurityAccessFilter.setCurrentUser(accessUser);
+    public static <T> T getAccessUserValue(String attrName, Class<T> type) {
+        Object value = getAccessUserValue(attrName);
+        if (value == null) {
+            return (T) value;
+        } else {
+            return TypeUtil.cast(value, type);
         }
-        if (Util.EXIST_DUBBO_APACHE) {
+    }
+
+    public static boolean setAccessUser(Object accessUser) {
+        boolean b = false;
+        if (PlatformDependentUtil.EXIST_HTTP_SERVLET) {
+            WebSecurityAccessFilter.setCurrentUser(accessUser);
+            b = true;
+        }
+        if (PlatformDependentUtil.EXIST_DUBBO_APACHE) {
             if (accessUser == null) {
                 DubboAccessUserUtil.removeApacheAccessUser();
             } else {
                 DubboAccessUserUtil.setApacheAccessUser(accessUser);
             }
-        } else if (Util.EXIST_DUBBO_ALIBABA) {
+            b = true;
+        } else if (PlatformDependentUtil.EXIST_DUBBO_ALIBABA) {
             if (accessUser == null) {
                 DubboAccessUserUtil.removeAlibabaAccessUser();
             } else {
                 DubboAccessUserUtil.setAlibabaAccessUser(accessUser);
             }
+            b = true;
+        }
+        return b;
+    }
+
+    public static <T> T getWebAccessUserValue(String attrName, Class<T> type) {
+        Object value = getWebAccessUserValue(attrName);
+        if (value == null) {
+            return (T) value;
+        } else {
+            return TypeUtil.cast(value, type);
         }
     }
 
-    public static String getWebAccessUserValue(String attrName) {
-        if (!Util.EXIST_HTTP_SERVLET) {
+    public static boolean setWebAccessUserValue(String attrName, Object value) {
+        if (!PlatformDependentUtil.EXIST_HTTP_SERVLET) {
+            return false;
+        }
+        return WebSecurityAccessFilter.setCurrentAccessUserValue(attrName, value);
+    }
+
+    public static boolean setAccessUserValue(String attrName, Object value) {
+        boolean b = false;
+        if (PlatformDependentUtil.EXIST_HTTP_SERVLET) {
+            b = WebSecurityAccessFilter.setCurrentAccessUserValue(attrName, value);
+        }
+        if (PlatformDependentUtil.EXIST_DUBBO_APACHE) {
+            DubboAccessUserUtil.setApacheAccessUserValue(attrName, value);
+            b = true;
+        } else if (PlatformDependentUtil.EXIST_DUBBO_ALIBABA) {
+            DubboAccessUserUtil.setAlibabaAccessUserValue(attrName, value);
+            b = true;
+        }
+        return b;
+    }
+
+    public static Object getWebAccessUserValue(String attrName) {
+        if (!PlatformDependentUtil.EXIST_HTTP_SERVLET) {
             return null;
         }
-        String value;
+        Object value;
         Object accessUser = WebSecurityAccessFilter.getCurrentAccessUserIfCreate();
         if (accessUser == null) {
             value = null;
@@ -69,13 +128,50 @@ public class AccessUserUtil {
             } else {
                 accessUserGetterMap = new BeanMap(accessUser);
             }
-            value = Objects.toString(accessUserGetterMap.get(attrName), null);
+            value = accessUserGetterMap.get(attrName);
         }
         return value;
     }
 
     public static void removeAccessUser() {
         setAccessUser(null);
+    }
+
+    public static <T> T runOnAccessUser(Object accessUser, Callable<T> runnable) {
+        Object oldAccessUser = getAccessUser();
+        try {
+            setAccessUser(accessUser);
+            return runnable.call();
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        } finally {
+            if (oldAccessUser != null) {
+                setAccessUser(oldAccessUser);
+            } else {
+                removeAccessUser();
+            }
+        }
+    }
+
+    public static void runOnAccessUser(Object accessUser, Runnable runnable) {
+        Object oldAccessUser = getAccessUserIfExist();
+        try {
+            setAccessUser(accessUser);
+            runnable.run();
+        } catch (Throwable e) {
+            throw new RuntimeException(e);
+        } finally {
+            if (oldAccessUser != null) {
+                setAccessUser(oldAccessUser);
+            } else {
+                removeAccessUser();
+            }
+        }
+    }
+
+    @FunctionalInterface
+    public interface Runnable {
+        void run() throws Throwable;
     }
 
 }

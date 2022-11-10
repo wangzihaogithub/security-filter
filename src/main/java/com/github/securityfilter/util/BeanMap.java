@@ -457,7 +457,7 @@ public class BeanMap extends LinkedHashMap<String, Object> {
     }
 
     protected Object cast(Object value, Class type) {
-        return value;
+        return TypeUtil.cast(value, type);
     }
 
     public boolean set(String key, Object value) {

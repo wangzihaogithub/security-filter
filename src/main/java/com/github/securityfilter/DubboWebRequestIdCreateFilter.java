@@ -5,12 +5,10 @@ import org.apache.dubbo.rpc.*;
 
 import javax.servlet.http.HttpServletRequest;
 
-import static org.apache.dubbo.common.constants.CommonConstants.CONSUMER;
-
 /**
  * 创建requestId
  */
-@Activate(group = {CONSUMER}, order = 50)
+@Activate(group = {"consumer"}, order = 50)
 public class DubboWebRequestIdCreateFilter extends WebRequestIdCreateFilter implements Filter {
     private final String[] skipInterfacePackets = {"org.apache.dubbo", "com.alibaba"};
 
