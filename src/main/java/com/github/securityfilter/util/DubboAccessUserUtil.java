@@ -12,7 +12,8 @@ public class DubboAccessUserUtil {
     static {
         boolean supportGetObjectAttachment;
         try {
-            RpcContext.getContext().getObjectAttachment("");
+            Class<?> clazz = Class.forName("org.apache.dubbo.rpc.RpcContext");
+            clazz.getDeclaredMethod("getObjectAttachment", String.class);
             supportGetObjectAttachment = true;
         } catch (Throwable e) {
             supportGetObjectAttachment = false;
@@ -51,17 +52,18 @@ public class DubboAccessUserUtil {
         } else {
             attrNameList = RpcContext.getContext().getAttachments().keySet();
         }
-        Map<String, Object> result = new LinkedHashMap<>();
+        Map<String, Object> result = new LinkedHashMap<>(6);
         for (String attrName : new ArrayList<>(attrNameList)) {
-            if (isUserAttr(attrName)) {
-                Object value;
-                if (SUPPORT_GET_OBJECT_ATTACHMENT) {
-                    value = RpcContext.getContext().getObjectAttachment(attrName);
-                } else {
-                    value = RpcContext.getContext().getAttachment(attrName);
-                }
-                result.put(attrName, value);
+            if (!isUserAttr(attrName)) {
+                continue;
             }
+            Object value;
+            if (SUPPORT_GET_OBJECT_ATTACHMENT) {
+                value = RpcContext.getContext().getObjectAttachment(attrName);
+            } else {
+                value = RpcContext.getContext().getAttachment(attrName);
+            }
+            result.put(attrName, value);
         }
         return result.isEmpty() ? null : result;
     }
@@ -103,8 +105,18 @@ public class DubboAccessUserUtil {
         for (Map.Entry<?, ?> entry : beanHandler.entrySet()) {
             Object key = entry.getKey();
             Object value = entry.getValue();
-            if (key instanceof String && isBaseType(value)) {
-                RpcContext.getContext().setAttachment(wrapUserAttrName((String) key), value);
+            if (!(key instanceof String)) {
+                continue;
+            }
+            String name = wrapUserAttrName((String) key);
+            if (value == null) {
+                RpcContext.getContext().removeAttachment(name);
+            } else if (isBaseType(value)) {
+                if (SUPPORT_GET_OBJECT_ATTACHMENT) {
+                    RpcContext.getContext().setObjectAttachment(name, value);
+                } else {
+                    RpcContext.getContext().setAttachment(name, value.toString());
+                }
             }
         }
     }
@@ -114,18 +126,36 @@ public class DubboAccessUserUtil {
         for (Map.Entry<?, ?> entry : beanHandler.entrySet()) {
             Object key = entry.getKey();
             Object value = entry.getValue();
-            if (key instanceof String && isBaseType(value)) {
-                com.alibaba.dubbo.rpc.RpcContext.getContext().setAttachment(wrapUserAttrName((String) key), Objects.toString(value, null));
+            if (!(key instanceof String)) {
+                continue;
+            }
+            String name = wrapUserAttrName((String) key);
+            if (value == null) {
+                com.alibaba.dubbo.rpc.RpcContext.getContext().removeAttachment(name);
+            } else if (isBaseType(value)) {
+                com.alibaba.dubbo.rpc.RpcContext.getContext().setAttachment(name, value.toString());
             }
         }
     }
 
     public static void setApacheAccessUserValue(String attrName, Object value) {
-        RpcContext.getContext().setAttachment(wrapUserAttrName(attrName), value);
+        String name = wrapUserAttrName(attrName);
+        if (value == null) {
+            RpcContext.getContext().removeAttachment(name);
+        } else if (SUPPORT_GET_OBJECT_ATTACHMENT) {
+            RpcContext.getContext().setObjectAttachment(name, value);
+        } else {
+            RpcContext.getContext().setAttachment(name, value.toString());
+        }
     }
 
     public static void setAlibabaAccessUserValue(String attrName, Object value) {
-        com.alibaba.dubbo.rpc.RpcContext.getContext().setAttachment(wrapUserAttrName(attrName), Objects.toString(value, null));
+        String name = wrapUserAttrName(attrName);
+        if (value == null) {
+            com.alibaba.dubbo.rpc.RpcContext.getContext().removeAttachment(name);
+        } else {
+            com.alibaba.dubbo.rpc.RpcContext.getContext().setAttachment(name, value.toString());
+        }
     }
 
     public static boolean isBaseType(Object value) {

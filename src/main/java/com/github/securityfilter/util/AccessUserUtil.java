@@ -7,6 +7,11 @@ import java.util.concurrent.Callable;
 
 public class AccessUserUtil {
 
+    public static boolean existAccessUser() {
+        Object exist = getAccessUserIfExist();
+        return exist != null;
+    }
+
     public static Object getAccessUser() {
         Object value = null;
         if (PlatformDependentUtil.EXIST_HTTP_SERVLET) {
@@ -145,10 +150,9 @@ public class AccessUserUtil {
         } catch (Exception e) {
             throw new RuntimeException(e);
         } finally {
+            removeAccessUser();
             if (oldAccessUser != null) {
                 setAccessUser(oldAccessUser);
-            } else {
-                removeAccessUser();
             }
         }
     }
@@ -161,10 +165,9 @@ public class AccessUserUtil {
         } catch (Throwable e) {
             throw new RuntimeException(e);
         } finally {
+            removeAccessUser();
             if (oldAccessUser != null) {
                 setAccessUser(oldAccessUser);
-            } else {
-                removeAccessUser();
             }
         }
     }
