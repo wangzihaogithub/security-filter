@@ -29,7 +29,7 @@ public class AccessUserUtil {
     public static Object getAccessUserIfExist() {
         Object value = null;
         if (PlatformDependentUtil.EXIST_HTTP_SERVLET) {
-            value = WebSecurityAccessFilter.getCurrentAccessUserExist(null);
+            value = WebSecurityAccessFilter.getCurrentAccessUserIfExist(null);
         }
         if (PlatformDependentUtil.EXIST_DUBBO_APACHE && value == null) {
             value = DubboAccessUserUtil.getApacheAccessUser();

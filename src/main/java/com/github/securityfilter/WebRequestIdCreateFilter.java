@@ -14,7 +14,8 @@ import java.util.function.Supplier;
  * @author hao
  */
 public class WebRequestIdCreateFilter implements Filter {
-    public static final String ATTR_REQUEST_ID = "requestId";
+    public static final String ATTR_REQUEST_ID =
+            System.getProperty("WebRequestIdCreateFilter.ATTR_REQUEST_ID", "requestId");
     private static final SnowflakeIdWorker ID_WORKER = new SnowflakeIdWorker();
     private static final Supplier<String> REQUEST_ID_SUPPLIER = () -> String.valueOf(ID_WORKER.nextId());
 

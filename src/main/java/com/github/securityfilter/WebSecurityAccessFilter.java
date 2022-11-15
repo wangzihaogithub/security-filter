@@ -22,8 +22,10 @@ import java.util.function.Supplier;
  * @author wangzihao
  */
 public class WebSecurityAccessFilter<USER_ID, ACCESS_USER> implements Filter {
-    public static final String REQUEST_ATTR_NAME = "user";
-    public static final String DEFAULT_ACCESS_TOKEN_PARAMETER_NAME = "access_token";
+    public static final String REQUEST_ATTR_NAME =
+            System.getProperty("WebSecurityAccessFilter.REQUEST_ATTR_NAME", "user");
+    public static final String DEFAULT_ACCESS_TOKEN_PARAMETER_NAME =
+            System.getProperty("WebSecurityAccessFilter.DEFAULT_ACCESS_TOKEN_PARAMETER_NAME", "access_token");
     /**
      * 防止嵌套调用
      */
@@ -87,7 +89,7 @@ public class WebSecurityAccessFilter<USER_ID, ACCESS_USER> implements Filter {
         if (request == null) {
             request = getCurrentRequest();
         }
-        ACCESS_USER user = getCurrentAccessUserExist(request);
+        ACCESS_USER user = getCurrentAccessUserIfExist(request);
         if (user == NULL) {
             return null;
         } else if (user == null && instance != null) {
