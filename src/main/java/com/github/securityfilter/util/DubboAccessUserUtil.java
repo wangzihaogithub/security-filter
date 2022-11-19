@@ -52,8 +52,8 @@ public class DubboAccessUserUtil {
         } else {
             attrNameList = RpcContext.getContext().getAttachments().keySet();
         }
-        Map<String, Object> result = new LinkedHashMap<>(6);
-        for (String attrName : new ArrayList<>(attrNameList)) {
+        Map<String, Object> result = null;
+        for (String attrName : attrNameList) {
             if (!isUserAttr(attrName)) {
                 continue;
             }
@@ -63,19 +63,50 @@ public class DubboAccessUserUtil {
             } else {
                 value = RpcContext.getContext().getAttachment(attrName);
             }
+            if (result == null) {
+                result = new LinkedHashMap<>(6);
+            }
             result.put(attrName, value);
         }
-        return result.isEmpty() ? null : result;
+        return result == null || result.isEmpty() ? null : result;
     }
 
     public static Map<String, String> getAlibabaAccessUser() {
-        Map<String, String> result = new LinkedHashMap<>();
-        for (String attrName : new ArrayList<>(com.alibaba.dubbo.rpc.RpcContext.getContext().getAttachments().keySet())) {
+        Map<String, String> result = null;
+        for (String attrName : com.alibaba.dubbo.rpc.RpcContext.getContext().getAttachments().keySet()) {
+            if (!isUserAttr(attrName)) {
+                continue;
+            }
+            if (result == null) {
+                result = new LinkedHashMap<>(6);
+            }
+            result.put(attrName, com.alibaba.dubbo.rpc.RpcContext.getContext().getAttachment(attrName));
+        }
+        return result == null || result.isEmpty() ? null : result;
+    }
+
+    public static boolean existAlibabaAccessUser() {
+        for (String attrName : com.alibaba.dubbo.rpc.RpcContext.getContext().getAttachments().keySet()) {
             if (isUserAttr(attrName)) {
-                result.put(attrName, com.alibaba.dubbo.rpc.RpcContext.getContext().getAttachment(attrName));
+                return true;
             }
         }
-        return result.isEmpty() ? null : result;
+        return false;
+    }
+
+    public static boolean existApacheAccessUser() {
+        Set<String> attrNameList;
+        if (SUPPORT_GET_OBJECT_ATTACHMENT) {
+            attrNameList = RpcContext.getContext().getObjectAttachments().keySet();
+        } else {
+            attrNameList = RpcContext.getContext().getAttachments().keySet();
+        }
+        for (String attrName : attrNameList) {
+            if (isUserAttr(attrName)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     public static void removeApacheAccessUser() {
@@ -111,7 +142,7 @@ public class DubboAccessUserUtil {
             String name = wrapUserAttrName((String) key);
             if (value == null) {
                 RpcContext.getContext().removeAttachment(name);
-            } else if (isBaseType(value)) {
+            } else if (isBasicType(value)) {
                 if (SUPPORT_GET_OBJECT_ATTACHMENT) {
                     RpcContext.getContext().setObjectAttachment(name, value);
                 } else {
@@ -132,7 +163,7 @@ public class DubboAccessUserUtil {
             String name = wrapUserAttrName((String) key);
             if (value == null) {
                 com.alibaba.dubbo.rpc.RpcContext.getContext().removeAttachment(name);
-            } else if (isBaseType(value)) {
+            } else if (isBasicType(value)) {
                 com.alibaba.dubbo.rpc.RpcContext.getContext().setAttachment(name, value.toString());
             }
         }
@@ -158,7 +189,7 @@ public class DubboAccessUserUtil {
         }
     }
 
-    public static boolean isBaseType(Object value) {
+    public static boolean isBasicType(Object value) {
         if (value == null) {
             return false;
         }

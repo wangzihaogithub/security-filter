@@ -8,8 +8,31 @@ import java.util.concurrent.Callable;
 public class AccessUserUtil {
 
     public static boolean existAccessUser() {
-        Object exist = getAccessUserIfExist();
-        return exist != null;
+        boolean exist = existWebAccessUser();
+        if (!exist) {
+            exist = existDubboAccessUser();
+        }
+        return exist;
+    }
+
+    public static boolean existWebAccessUser() {
+        if (PlatformDependentUtil.EXIST_HTTP_SERVLET) {
+            return null != WebSecurityAccessFilter.getCurrentAccessUserIfExist();
+        } else {
+            return false;
+        }
+    }
+
+    public static boolean existDubboAccessUser() {
+        if (PlatformDependentUtil.EXIST_DUBBO_APACHE
+                && DubboAccessUserUtil.existApacheAccessUser()) {
+            return true;
+        } else if (PlatformDependentUtil.EXIST_DUBBO_ALIBABA
+                && DubboAccessUserUtil.existAlibabaAccessUser()) {
+            return true;
+        } else {
+            return false;
+        }
     }
 
     public static Object getAccessUser() {
@@ -29,7 +52,7 @@ public class AccessUserUtil {
     public static Object getAccessUserIfExist() {
         Object value = null;
         if (PlatformDependentUtil.EXIST_HTTP_SERVLET) {
-            value = WebSecurityAccessFilter.getCurrentAccessUserIfExist(null);
+            value = WebSecurityAccessFilter.getCurrentAccessUserIfExist();
         }
         if (PlatformDependentUtil.EXIST_DUBBO_APACHE && value == null) {
             value = DubboAccessUserUtil.getApacheAccessUser();
@@ -56,11 +79,7 @@ public class AccessUserUtil {
 
     public static <T> T getAccessUserValue(String attrName, Class<T> type) {
         Object value = getAccessUserValue(attrName);
-        if (value == null) {
-            return (T) value;
-        } else {
-            return TypeUtil.cast(value, type);
-        }
+        return TypeUtil.cast(value, type);
     }
 
     public static boolean setAccessUser(Object accessUser) {
@@ -89,18 +108,27 @@ public class AccessUserUtil {
 
     public static <T> T getWebAccessUserValue(String attrName, Class<T> type) {
         Object value = getWebAccessUserValue(attrName);
-        if (value == null) {
-            return (T) value;
-        } else {
-            return TypeUtil.cast(value, type);
-        }
+        return TypeUtil.cast(value, type);
     }
 
     public static boolean setWebAccessUserValue(String attrName, Object value) {
-        if (!PlatformDependentUtil.EXIST_HTTP_SERVLET) {
+        if (PlatformDependentUtil.EXIST_HTTP_SERVLET) {
+            return WebSecurityAccessFilter.setCurrentAccessUserValue(attrName, value);
+        } else {
             return false;
         }
-        return WebSecurityAccessFilter.setCurrentAccessUserValue(attrName, value);
+    }
+
+    public static boolean setDubboAccessUserValue(String attrName, Object value) {
+        if (PlatformDependentUtil.EXIST_DUBBO_APACHE) {
+            DubboAccessUserUtil.setApacheAccessUserValue(attrName, value);
+            return true;
+        } else if (PlatformDependentUtil.EXIST_DUBBO_ALIBABA) {
+            DubboAccessUserUtil.setAlibabaAccessUserValue(attrName, value);
+            return true;
+        } else {
+            return false;
+        }
     }
 
     public static boolean setAccessUserValue(String attrName, Object value) {
@@ -143,7 +171,7 @@ public class AccessUserUtil {
     }
 
     public static <T> T runOnAccessUser(Object accessUser, Callable<T> runnable) {
-        Object oldAccessUser = getAccessUser();
+        Object oldAccessUser = getAccessUserIfExist();
         try {
             setAccessUser(accessUser);
             return runnable.call();
