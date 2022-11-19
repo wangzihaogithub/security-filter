@@ -10,7 +10,6 @@ import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 import java.io.IOException;
 import java.nio.charset.Charset;
-import java.nio.charset.StandardCharsets;
 import java.util.*;
 import java.util.concurrent.Callable;
 import java.util.function.Supplier;
@@ -26,6 +25,8 @@ public class WebSecurityAccessFilter<USER_ID, ACCESS_USER> implements Filter {
             System.getProperty("WebSecurityAccessFilter.REQUEST_ATTR_NAME", "user");
     public static final String DEFAULT_ACCESS_TOKEN_PARAMETER_NAME =
             System.getProperty("WebSecurityAccessFilter.DEFAULT_ACCESS_TOKEN_PARAMETER_NAME", "access_token");
+    private static final Charset UTF_8 = Charset.forName("UTF-8");
+
     /**
      * 防止嵌套调用
      */
@@ -402,9 +403,9 @@ public class WebSecurityAccessFilter<USER_ID, ACCESS_USER> implements Filter {
         if (body instanceof byte[]) {
             return (byte[]) body;
         } else if (body instanceof String) {
-            return ((String) body).getBytes(StandardCharsets.UTF_8);
+            return ((String) body).getBytes(UTF_8);
         } else if (body == null) {
-            return "{}".getBytes(StandardCharsets.UTF_8);
+            return "{}".getBytes(UTF_8);
         } else {
             return toJsonBytes(body);
         }
@@ -438,7 +439,7 @@ public class WebSecurityAccessFilter<USER_ID, ACCESS_USER> implements Filter {
             try {
                 Object jsonString = PlatformDependentUtil.FASTJSON_TO_JSON_STRING_METHOD.invoke(null, body);
                 if (jsonString instanceof String) {
-                    bytes = ((String) jsonString).getBytes(Charset.forName("UTF-8"));
+                    bytes = ((String) jsonString).getBytes(UTF_8);
                 }
             } catch (Exception ignored) {
             }
