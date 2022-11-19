@@ -25,8 +25,6 @@ public class WebSecurityAccessFilter<USER_ID, ACCESS_USER> implements Filter {
             System.getProperty("WebSecurityAccessFilter.REQUEST_ATTR_NAME", "user");
     public static final String DEFAULT_ACCESS_TOKEN_PARAMETER_NAME =
             System.getProperty("WebSecurityAccessFilter.DEFAULT_ACCESS_TOKEN_PARAMETER_NAME", "access_token");
-    private static final Charset UTF_8 = Charset.forName("UTF-8");
-
     /**
      * 防止嵌套调用
      */
@@ -36,6 +34,7 @@ public class WebSecurityAccessFilter<USER_ID, ACCESS_USER> implements Filter {
      */
     private static final ThreadLocal<Supplier<Object>> ACCESS_USER_THREAD_LOCAL = new ThreadLocal<>();
     private static final ThreadLocal<HttpServletRequest> REQUEST_THREAD_LOCAL = new ThreadLocal<>();
+    private static final Charset UTF_8 = Charset.forName("UTF-8");
     private static WebSecurityAccessFilter INSTANCE;
 
     private final Set<String> accessTokenParameterNames = new LinkedHashSet<>();
