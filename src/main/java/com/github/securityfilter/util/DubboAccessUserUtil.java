@@ -232,7 +232,22 @@ public class DubboAccessUserUtil {
     }
 
     public static <T> T apacheNestingRequest(Supplier<T> request) {
-        if (SUPPORT_APACHE_2X_RESTORE_CONTEXT) {
+        if (SUPPORT_APACHE_3X_RESTORE_SERVICE_CONTEXT) {
+            boolean nesting = RpcContext.getContext().getUrl() != null;
+            RpcContext.RestoreServiceContext restoreServiceContext;
+            if (nesting) {
+                restoreServiceContext = RpcContext.storeServiceContext();
+            } else {
+                restoreServiceContext = null;
+            }
+            try {
+                return request.get();
+            } finally {
+                if (restoreServiceContext != null) {
+                    RpcContext.restoreServiceContext(restoreServiceContext);
+                }
+            }
+        } else if (SUPPORT_APACHE_2X_RESTORE_CONTEXT) {
             RpcContext oldContext = RpcContext.getContext();
             boolean nesting = oldContext.getUrl() != null;
             RpcContext snapshotContext;
@@ -269,21 +284,6 @@ public class DubboAccessUserUtil {
                     } catch (IllegalAccessException | InvocationTargetException e) {
                         throw new RuntimeException(e);
                     }
-                }
-            }
-        } else if (SUPPORT_APACHE_3X_RESTORE_SERVICE_CONTEXT) {
-            boolean nesting = RpcContext.getContext().getUrl() != null;
-            RpcContext.RestoreServiceContext restoreServiceContext;
-            if (nesting) {
-                restoreServiceContext = RpcContext.storeServiceContext();
-            } else {
-                restoreServiceContext = null;
-            }
-            try {
-                return request.get();
-            } finally {
-                if (restoreServiceContext != null) {
-                    RpcContext.restoreServiceContext(restoreServiceContext);
                 }
             }
         } else {
