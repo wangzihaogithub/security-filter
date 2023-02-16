@@ -1,6 +1,7 @@
 package com.github.securityfilter;
 
 import com.github.securityfilter.util.BeanMap;
+import com.github.securityfilter.util.DubboAccessUserUtil;
 import com.github.securityfilter.util.PlatformDependentUtil;
 import com.github.securityfilter.util.SpringUtil;
 
@@ -93,8 +94,15 @@ public class WebSecurityAccessFilter<USER_ID, ACCESS_USER> implements Filter {
         if (user == NULL) {
             return null;
         } else if (user == null && instance != null) {
-            instance.initAccessUser(request);
-            return getCurrentAccessUser(request);
+            Object accessUser;
+            if (PlatformDependentUtil.EXIST_DUBBO_APACHE
+                    && DubboAccessUserUtil.isApacheNestingRequest()) {
+                HttpServletRequest finalRequest = request;
+                accessUser = DubboAccessUserUtil.apacheNestingRequest(() -> instance.initAccessUser(finalRequest));
+            } else {
+                accessUser = instance.initAccessUser(request);
+            }
+            return (ACCESS_USER) accessUser;
         } else {
             return user;
         }

@@ -2,12 +2,19 @@ package com.github.securityfilter.util;
 
 import org.apache.dubbo.rpc.RpcContext;
 
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
+import java.lang.reflect.Modifier;
 import java.time.temporal.TemporalAccessor;
 import java.util.*;
+import java.util.function.Supplier;
 
 public class DubboAccessUserUtil {
     public static final String ATTR_PREFIX = System.getProperty("DubboAccessUserUtil.ATTR_PREFIX", "_user") + ".";
     private static final boolean SUPPORT_GET_OBJECT_ATTACHMENT;
+    private static final boolean SUPPORT_APACHE_2X_RESTORE_CONTEXT;
+    private static final Method APACHE_RESTORE_2X_CONTEXT_METHOD;
+    private static final boolean SUPPORT_APACHE_3X_RESTORE_SERVICE_CONTEXT;
 
     static {
         boolean supportGetObjectAttachment;
@@ -19,6 +26,36 @@ public class DubboAccessUserUtil {
             supportGetObjectAttachment = false;
         }
         SUPPORT_GET_OBJECT_ATTACHMENT = supportGetObjectAttachment;
+
+        boolean supportApacheRestoreContext;
+        Method restoreContextMethod;
+        try {
+            // dubbo 2.x
+            Class<?> clazz = Class.forName("org.apache.dubbo.rpc.RpcContext");
+            Method method = clazz.getDeclaredMethod("restoreContext", RpcContext.class);
+            supportApacheRestoreContext = Modifier.isStatic(method.getModifiers())
+                    && Modifier.isPublic(method.getModifiers());
+            if (supportApacheRestoreContext) {
+                restoreContextMethod = method;
+            } else {
+                restoreContextMethod = null;
+            }
+        } catch (Throwable e) {
+            supportApacheRestoreContext = false;
+            restoreContextMethod = null;
+        }
+        APACHE_RESTORE_2X_CONTEXT_METHOD = restoreContextMethod;
+        SUPPORT_APACHE_2X_RESTORE_CONTEXT = supportApacheRestoreContext;
+
+        boolean supportApacheRestoreServiceContext;
+        try {
+            // dubbo3.x
+            Class.forName("org.apache.dubbo.rpc.RpcContext.RestoreServiceContext");
+            supportApacheRestoreServiceContext = true;
+        } catch (Throwable e) {
+            supportApacheRestoreServiceContext = false;
+        }
+        SUPPORT_APACHE_3X_RESTORE_SERVICE_CONTEXT = supportApacheRestoreServiceContext;
     }
 
     private static boolean isUserAttr(String attrName) {
@@ -186,6 +223,71 @@ public class DubboAccessUserUtil {
             com.alibaba.dubbo.rpc.RpcContext.getContext().removeAttachment(name);
         } else {
             com.alibaba.dubbo.rpc.RpcContext.getContext().setAttachment(name, value.toString());
+        }
+    }
+
+
+    public static boolean isApacheNestingRequest() {
+        return RpcContext.getContext().getUrl() != null;
+    }
+
+    public static <T> T apacheNestingRequest(Supplier<T> request) {
+        if (SUPPORT_APACHE_3X_RESTORE_SERVICE_CONTEXT) {
+            boolean nesting = RpcContext.getContext().getUrl() != null;
+            RpcContext.RestoreServiceContext restoreServiceContext;
+            if (nesting) {
+                restoreServiceContext = RpcContext.storeServiceContext();
+            } else {
+                restoreServiceContext = null;
+            }
+            try {
+                return request.get();
+            } finally {
+                if (restoreServiceContext != null) {
+                    RpcContext.restoreServiceContext(restoreServiceContext);
+                }
+            }
+        } else if (SUPPORT_APACHE_2X_RESTORE_CONTEXT) {
+            RpcContext oldContext = RpcContext.getContext();
+            boolean nesting = oldContext.getUrl() != null;
+            RpcContext snapshotContext;
+            if (nesting) {
+                snapshotContext = new RpcContext() {
+
+                };
+                snapshotContext.setRequest(oldContext.getRequest());
+                snapshotContext.setResponse(oldContext.getResponse());
+                snapshotContext.setFuture(oldContext.getCompletableFuture());
+                snapshotContext.setInvokers(oldContext.getInvokers());
+                snapshotContext.setInvoker(oldContext.getInvoker());
+                snapshotContext.setInvocation(oldContext.getInvocation());
+                snapshotContext.setUrls(oldContext.getUrls());
+                snapshotContext.setUrl(oldContext.getUrl());
+                snapshotContext.setMethodName(oldContext.getMethodName());
+                snapshotContext.setParameterTypes(oldContext.getParameterTypes());
+                snapshotContext.setArguments(oldContext.getArguments());
+                snapshotContext.setLocalAddress(oldContext.getLocalAddress());
+                snapshotContext.setRemoteAddress(oldContext.getRemoteAddress());
+                snapshotContext.setRemoteApplicationName(oldContext.getRemoteApplicationName());
+                snapshotContext.setObjectAttachments(oldContext.getObjectAttachments());
+                snapshotContext.get().putAll(oldContext.get());
+                snapshotContext.setConsumerUrl(oldContext.getConsumerUrl());
+            } else {
+                snapshotContext = null;
+            }
+            try {
+                return request.get();
+            } finally {
+                if (snapshotContext != null) {
+                    try {
+                        APACHE_RESTORE_2X_CONTEXT_METHOD.invoke(null, snapshotContext);
+                    } catch (IllegalAccessException | InvocationTargetException e) {
+                        throw new RuntimeException(e);
+                    }
+                }
+            }
+        } else {
+            return request.get();
         }
     }
 
