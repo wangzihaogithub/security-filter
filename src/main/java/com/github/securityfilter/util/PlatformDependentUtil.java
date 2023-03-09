@@ -78,4 +78,8 @@ public class PlatformDependentUtil {
         FASTJSON_TO_JSON_STRING_METHOD = toJSONStringMethod;
     }
 
+    public static <E extends Throwable> void sneakyThrows(Throwable t) throws E {
+        throw (E) t;
+    }
+
 }

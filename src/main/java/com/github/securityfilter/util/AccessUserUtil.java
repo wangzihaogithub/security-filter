@@ -176,7 +176,8 @@ public class AccessUserUtil {
             setAccessUser(accessUser);
             return runnable.call();
         } catch (Exception e) {
-            throw new RuntimeException(e);
+            PlatformDependentUtil.sneakyThrows(e);
+            return null;
         } finally {
             removeAccessUser();
             if (oldAccessUser != null) {
@@ -191,7 +192,7 @@ public class AccessUserUtil {
             setAccessUser(accessUser);
             runnable.run();
         } catch (Throwable e) {
-            throw new RuntimeException(e);
+            PlatformDependentUtil.sneakyThrows(e);
         } finally {
             removeAccessUser();
             if (oldAccessUser != null) {

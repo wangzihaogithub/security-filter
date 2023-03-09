@@ -282,7 +282,7 @@ public class DubboAccessUserUtil {
                     try {
                         APACHE_RESTORE_2X_CONTEXT_METHOD.invoke(null, snapshotContext);
                     } catch (IllegalAccessException | InvocationTargetException e) {
-                        throw new RuntimeException(e);
+                        PlatformDependentUtil.sneakyThrows(e);
                     }
                 }
             }
