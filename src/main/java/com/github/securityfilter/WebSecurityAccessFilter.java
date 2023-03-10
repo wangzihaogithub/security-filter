@@ -328,7 +328,7 @@ public class WebSecurityAccessFilter<USER_ID, ACCESS_USER> implements Filter {
         HttpServletResponse response = (HttpServletResponse) servletResponse;
 
         REQUEST_THREAD_LOCAL.set(request);
-        setCurrentUser(null);
+        ACCESS_USER_THREAD_LOCAL.remove();
         try {
             // 用户不存在
             ACCESS_USER accessUser = initAccessUser(request);
@@ -352,24 +352,13 @@ public class WebSecurityAccessFilter<USER_ID, ACCESS_USER> implements Filter {
     }
 
     protected ACCESS_USER initAccessUser(HttpServletRequest request) {
-        Supplier<Object> supplier = ACCESS_USER_THREAD_LOCAL.get();
-        ACCESS_USER accessUser = null;
-        if (supplier != null) {
-            accessUser = (ACCESS_USER) supplier.get();
-        }
-        if (accessUser == NULL) {
-            return null;
-        }
-        if (accessUser != null) {
-            return accessUser;
-        }
         if (request == null) {
             request = getCurrentRequest();
         }
         if (request == null) {
             return null;
         }
-        accessUser = (ACCESS_USER) request.getAttribute(REQUEST_ATTR_NAME);
+        ACCESS_USER accessUser = (ACCESS_USER) request.getAttribute(REQUEST_ATTR_NAME);
         if (accessUser == NULL) {
             return null;
         }
@@ -395,7 +384,8 @@ public class WebSecurityAccessFilter<USER_ID, ACCESS_USER> implements Filter {
                 }
             }
         } finally {
-            setCurrentUser(accessUser == null ? NULL : accessUser);
+            ACCESS_USER_THREAD_LOCAL.remove();
+            request.setAttribute(REQUEST_ATTR_NAME, accessUser);
         }
         return accessUser;
     }
