@@ -6,6 +6,7 @@ import java.util.Map;
 import java.util.concurrent.Callable;
 
 public class AccessUserUtil {
+    public static final Object NULL = new Object();
 
     public static boolean existAccessUser() {
         boolean exist = existWebAccessUser();
@@ -85,7 +86,11 @@ public class AccessUserUtil {
     public static boolean setAccessUser(Object accessUser) {
         boolean b = false;
         if (PlatformDependentUtil.EXIST_HTTP_SERVLET) {
-            WebSecurityAccessFilter.setCurrentUser(accessUser);
+            if (accessUser == null) {
+                WebSecurityAccessFilter.removeCurrentUser();
+            } else {
+                WebSecurityAccessFilter.setCurrentUser(accessUser);
+            }
             b = true;
         }
         if (PlatformDependentUtil.EXIST_DUBBO_APACHE) {

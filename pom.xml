@@ -4,7 +4,7 @@
     <modelVersion>4.0.0</modelVersion>
     <groupId>com.github.wangzihaogithub</groupId>
     <artifactId>security-filter</artifactId>
-    <version>1.1.1</version>
+    <version>1.1.2</version>
     <name>security-filter</name>
     <description>Security filter project</description>
     <url>https://github.com/wangzihaogithub/security-filter.git</url>

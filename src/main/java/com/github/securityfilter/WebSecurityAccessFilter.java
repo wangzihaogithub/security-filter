@@ -29,7 +29,7 @@ public class WebSecurityAccessFilter<USER_ID, ACCESS_USER> implements Filter {
     /**
      * 防止嵌套调用
      */
-    public static final Object NULL = new Object();
+    public static final Object NULL = com.github.securityfilter.util.AccessUserUtil.NULL;
     /**
      * 跨线程传递当前RPC请求的用户
      */
@@ -150,18 +150,23 @@ public class WebSecurityAccessFilter<USER_ID, ACCESS_USER> implements Filter {
         return getCurrentAccessUser(null);
     }
 
+    public static void removeCurrentUser() {
+        ACCESS_USER_THREAD_LOCAL.remove();
+        HttpServletRequest request = getCurrentRequest();
+        if (request != null) {
+            request.removeAttribute(REQUEST_ATTR_NAME);
+        }
+    }
+
     public static <T> void setCurrentUser(T accessUser) {
         HttpServletRequest request = getCurrentRequest();
         if (accessUser == null) {
-            ACCESS_USER_THREAD_LOCAL.remove();
-            if (request != null) {
-                request.removeAttribute(REQUEST_ATTR_NAME);
-            }
-        } else {
-            ACCESS_USER_THREAD_LOCAL.set(() -> accessUser);
-            if (request != null) {
-                request.setAttribute(REQUEST_ATTR_NAME, accessUser);
-            }
+            accessUser = (T) NULL;
+        }
+        T finalAccessUser = accessUser;
+        ACCESS_USER_THREAD_LOCAL.set(() -> finalAccessUser);
+        if (request != null) {
+            request.setAttribute(REQUEST_ATTR_NAME, finalAccessUser);
         }
     }
 
