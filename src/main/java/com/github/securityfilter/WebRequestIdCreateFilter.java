@@ -5,6 +5,7 @@ import org.slf4j.MDC;
 
 import javax.servlet.*;
 import javax.servlet.http.HttpServletRequest;
+import javax.servlet.http.HttpServletResponse;
 import java.io.IOException;
 import java.util.function.Supplier;
 
@@ -79,24 +80,32 @@ public class WebRequestIdCreateFilter implements Filter {
         }
     }
 
-    public void createRequestIdAfter(HttpServletRequest request, String requestId) {
-
+    public void httpBefore(HttpServletRequest request, HttpServletResponse response) {
+        createAndSetRequestId(request, response);
     }
 
-    public void removeRequestIdAfter(HttpServletRequest request, String requestId) {
+    public void httpAfter(HttpServletRequest request, HttpServletResponse response) {
+        removeRequestId(request, response);
+    }
 
+    public String createAndSetRequestId(HttpServletRequest request, HttpServletResponse response) {
+        return getRequestId(request, true);
+    }
+
+    public void removeRequestId(HttpServletRequest request, HttpServletResponse response) {
+        setRequestId(request, null);
     }
 
     @Override
     public void doFilter(ServletRequest servletRequest, ServletResponse servletResponse, FilterChain chain) throws IOException, ServletException {
         HttpServletRequest request = (HttpServletRequest) servletRequest;
-        String requestId = getRequestId(request, true);
-        createRequestIdAfter(request, requestId);
+        HttpServletResponse response = (HttpServletResponse) servletResponse;
+
+        httpBefore(request, response);
         try {
             chain.doFilter(request, servletResponse);
         } finally {
-            setRequestId(request, null);
-            removeRequestIdAfter(request, requestId);
+            httpAfter(request, response);
         }
     }
 }

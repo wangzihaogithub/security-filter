@@ -4,24 +4,34 @@ import com.github.securityfilter.WebSecurityAccessFilter;
 
 import java.util.Map;
 import java.util.concurrent.Callable;
+import java.util.function.Supplier;
 
 public class AccessUserUtil {
     public static final Object NULL = new Object();
+    /**
+     * 跨线程传递当前RPC请求的用户
+     */
+    private static final ThreadLocal<Supplier<Object>> ACCESS_USER_THREAD_LOCAL = new ThreadLocal<>();
+
+    public static boolean isNotNull(Object accessUser) {
+        return !isNull(accessUser);
+    }
+
+    public static boolean isNull(Object accessUser) {
+        return accessUser == null || accessUser == NULL;
+    }
 
     public static boolean existAccessUser() {
-        boolean exist = existWebAccessUser();
-        if (!exist) {
-            exist = existDubboAccessUser();
-        }
-        return exist;
+        return existCurrentThreadAccessUser() || existWebAccessUser() || existDubboAccessUser();
+    }
+
+    public static boolean existCurrentThreadAccessUser() {
+        return isNotNull(getCurrentThreadAccessUser());
     }
 
     public static boolean existWebAccessUser() {
-        if (PlatformDependentUtil.EXIST_HTTP_SERVLET) {
-            return null != WebSecurityAccessFilter.getCurrentAccessUserIfExist();
-        } else {
-            return false;
-        }
+        return PlatformDependentUtil.EXIST_HTTP_SERVLET
+                && isNotNull(WebSecurityAccessFilter.getCurrentAccessUserIfExist());
     }
 
     public static boolean existDubboAccessUser() {
@@ -37,42 +47,48 @@ public class AccessUserUtil {
     }
 
     public static Object getAccessUser() {
-        Object value = null;
-        if (PlatformDependentUtil.EXIST_HTTP_SERVLET) {
-            value = WebSecurityAccessFilter.getCurrentAccessUserIfCreate();
+        Object value = getCurrentThreadAccessUser();
+        if (value == null && PlatformDependentUtil.EXIST_HTTP_SERVLET) {
+            value = WebSecurityAccessFilter.getCurrentAccessUserIfExist();
+            if (NULL == value) {
+                return null;
+            }
+            if (null == value) {
+                value = WebSecurityAccessFilter.createAccessUser();
+            }
         }
-        if (PlatformDependentUtil.EXIST_DUBBO_APACHE && value == null) {
+        if (value == null && PlatformDependentUtil.EXIST_DUBBO_APACHE) {
             value = DubboAccessUserUtil.getApacheAccessUser();
         }
-        if (PlatformDependentUtil.EXIST_DUBBO_ALIBABA && value == null) {
+        if (value == null && PlatformDependentUtil.EXIST_DUBBO_ALIBABA) {
             value = DubboAccessUserUtil.getAlibabaAccessUser();
         }
-        return value;
+        return value == NULL ? null : value;
     }
 
     public static Object getAccessUserIfExist() {
-        Object value = null;
-        if (PlatformDependentUtil.EXIST_HTTP_SERVLET) {
+        Object value = getCurrentThreadAccessUser();
+        if (value == null && PlatformDependentUtil.EXIST_HTTP_SERVLET) {
             value = WebSecurityAccessFilter.getCurrentAccessUserIfExist();
         }
-        if (PlatformDependentUtil.EXIST_DUBBO_APACHE && value == null) {
+        if (value == null && PlatformDependentUtil.EXIST_DUBBO_APACHE) {
             value = DubboAccessUserUtil.getApacheAccessUser();
         }
-        if (PlatformDependentUtil.EXIST_DUBBO_ALIBABA && value == null) {
+        if (value == null && PlatformDependentUtil.EXIST_DUBBO_ALIBABA) {
             value = DubboAccessUserUtil.getAlibabaAccessUser();
         }
-        return value;
+        return value == NULL ? null : value;
     }
 
     public static Object getAccessUserValue(String attrName) {
-        Object value = null;
-        if (PlatformDependentUtil.EXIST_HTTP_SERVLET) {
+        Object value = getCurrentThreadAccessUserValue(attrName);
+        if (value == null && PlatformDependentUtil.EXIST_HTTP_SERVLET) {
             value = getWebAccessUserValue(attrName);
         }
-        if (PlatformDependentUtil.EXIST_DUBBO_APACHE && value == null) {
+        if (value == null && PlatformDependentUtil.EXIST_DUBBO_APACHE) {
             value = DubboAccessUserUtil.getApacheAccessUserValue(attrName);
         }
-        if (PlatformDependentUtil.EXIST_DUBBO_ALIBABA && value == null) {
+        if (value == null && PlatformDependentUtil.EXIST_DUBBO_ALIBABA) {
             value = DubboAccessUserUtil.getAlibabaAccessUserValue(attrName);
         }
         return value;
@@ -83,32 +99,33 @@ public class AccessUserUtil {
         return TypeUtil.cast(value, type);
     }
 
-    public static boolean setAccessUser(Object accessUser) {
-        boolean b = false;
-        if (PlatformDependentUtil.EXIST_HTTP_SERVLET) {
-            if (accessUser == null) {
-                WebSecurityAccessFilter.removeCurrentUser();
-            } else {
+    public static void setAccessUser(Object accessUser) {
+        if (accessUser == null) {
+            removeAccessUser();
+        } else {
+            if (PlatformDependentUtil.EXIST_HTTP_SERVLET && WebSecurityAccessFilter.isInLifecycle()) {
                 WebSecurityAccessFilter.setCurrentUser(accessUser);
-            }
-            b = true;
-        }
-        if (PlatformDependentUtil.EXIST_DUBBO_APACHE) {
-            if (accessUser == null) {
-                DubboAccessUserUtil.removeApacheAccessUser();
             } else {
-                DubboAccessUserUtil.setApacheAccessUser(accessUser);
+                setCurrentThreadAccessUser(accessUser);
             }
-            b = true;
-        } else if (PlatformDependentUtil.EXIST_DUBBO_ALIBABA) {
-            if (accessUser == null) {
-                DubboAccessUserUtil.removeAlibabaAccessUser();
-            } else {
-                DubboAccessUserUtil.setAlibabaAccessUser(accessUser);
-            }
-            b = true;
         }
-        return b;
+    }
+
+    public static <ACCESS_USER> ACCESS_USER getCurrentThreadAccessUser() {
+        Supplier<Object> supplier = ACCESS_USER_THREAD_LOCAL.get();
+        return supplier != null ? (ACCESS_USER) supplier.get() : null;
+    }
+
+    public static void removeCurrentThreadAccessUser() {
+        ACCESS_USER_THREAD_LOCAL.remove();
+    }
+
+    public static void setCurrentThreadAccessUser(Object accessUser) {
+        ACCESS_USER_THREAD_LOCAL.set(() -> accessUser);
+    }
+
+    public static void setCurrentThreadAccessUserSupplier(Supplier accessUserSupplier) {
+        ACCESS_USER_THREAD_LOCAL.set(accessUserSupplier);
     }
 
     public static <T> T getWebAccessUserValue(String attrName, Class<T> type) {
@@ -117,7 +134,7 @@ public class AccessUserUtil {
     }
 
     public static boolean setWebAccessUserValue(String attrName, Object value) {
-        if (PlatformDependentUtil.EXIST_HTTP_SERVLET) {
+        if (PlatformDependentUtil.EXIST_HTTP_SERVLET && WebSecurityAccessFilter.isInLifecycle()) {
             return WebSecurityAccessFilter.setCurrentAccessUserValue(attrName, value);
         } else {
             return false;
@@ -137,18 +154,31 @@ public class AccessUserUtil {
     }
 
     public static boolean setAccessUserValue(String attrName, Object value) {
-        boolean b = false;
-        if (PlatformDependentUtil.EXIST_HTTP_SERVLET) {
-            b = WebSecurityAccessFilter.setCurrentAccessUserValue(attrName, value);
+        boolean setterSuccess;
+        if (PlatformDependentUtil.EXIST_HTTP_SERVLET && WebSecurityAccessFilter.isInLifecycle()) {
+            setterSuccess = WebSecurityAccessFilter.setCurrentAccessUserValue(attrName, value);
+        } else {
+            Object accessUser = getCurrentThreadAccessUser();
+            setterSuccess = TypeUtil.invokeSetter(accessUser, attrName, value);
         }
-        if (PlatformDependentUtil.EXIST_DUBBO_APACHE) {
-            DubboAccessUserUtil.setApacheAccessUserValue(attrName, value);
-            b = true;
-        } else if (PlatformDependentUtil.EXIST_DUBBO_ALIBABA) {
-            DubboAccessUserUtil.setAlibabaAccessUserValue(attrName, value);
-            b = true;
+        return setterSuccess;
+    }
+
+    public static Object getCurrentThreadAccessUserValue(String attrName) {
+        Object accessUser = getCurrentThreadAccessUser();
+        Object value;
+        if (isNull(accessUser)) {
+            value = null;
+        } else {
+            Map accessUserGetterMap;
+            if (accessUser instanceof Map) {
+                accessUserGetterMap = (Map) accessUser;
+            } else {
+                accessUserGetterMap = new BeanMap(accessUser);
+            }
+            value = accessUserGetterMap.get(attrName);
         }
-        return b;
+        return value;
     }
 
     public static Object getWebAccessUserValue(String attrName) {
@@ -157,7 +187,7 @@ public class AccessUserUtil {
         }
         Object value;
         Object accessUser = WebSecurityAccessFilter.getCurrentAccessUserIfCreate();
-        if (accessUser == null) {
+        if (isNull(accessUser)) {
             value = null;
         } else {
             Map accessUserGetterMap;
@@ -172,10 +202,22 @@ public class AccessUserUtil {
     }
 
     public static void removeAccessUser() {
-        setAccessUser(null);
+        removeCurrentThreadAccessUser();
+        if (PlatformDependentUtil.EXIST_HTTP_SERVLET && WebSecurityAccessFilter.isInLifecycle()) {
+            WebSecurityAccessFilter.removeCurrentUser();
+        }
+        if (PlatformDependentUtil.EXIST_DUBBO_APACHE) {
+            DubboAccessUserUtil.removeApacheAccessUser();
+        }
+        if (PlatformDependentUtil.EXIST_DUBBO_ALIBABA) {
+            DubboAccessUserUtil.removeAlibabaAccessUser();
+        }
     }
 
     public static <T> T runOnAccessUser(Object accessUser, Callable<T> runnable) {
+        if (accessUser == null) {
+            accessUser = NULL;
+        }
         Object oldAccessUser = getAccessUserIfExist();
         try {
             setAccessUser(accessUser);
@@ -192,6 +234,9 @@ public class AccessUserUtil {
     }
 
     public static void runOnAccessUser(Object accessUser, Runnable runnable) {
+        if (accessUser == null) {
+            accessUser = NULL;
+        }
         Object oldAccessUser = getAccessUserIfExist();
         try {
             setAccessUser(accessUser);
