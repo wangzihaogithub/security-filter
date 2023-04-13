@@ -158,7 +158,10 @@ public class WebSecurityAccessFilter<USER_ID, ACCESS_USER> implements Filter {
             accessUser = (ACCESS_USER) request.getAttribute(REQUEST_ATTR_NAME);
         }
         if (accessUser == null || accessUser == NULL) {
-            accessUser = AccessUserUtil.getCurrentThreadAccessUser();
+            ACCESS_USER threadAccessUser = AccessUserUtil.getCurrentThreadAccessUser();
+            if (threadAccessUser != null) {
+                return threadAccessUser;
+            }
         }
         return accessUser;
     }
