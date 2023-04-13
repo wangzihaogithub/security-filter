@@ -68,13 +68,13 @@ public class DubboWebRequestIdCreateFilter extends WebRequestIdCreateFilter impl
 
     @Override
     public void httpBefore(HttpServletRequest request, HttpServletResponse response) {
-        String requestId = super.createAndSetRequestId(request, response);
+        String requestId = createAndSetRequestId(request, response);
         setDubboRequestId0(requestId);
     }
 
     @Override
     public void httpAfter(HttpServletRequest request, HttpServletResponse servletResponse) {
-        super.removeRequestId(request, servletResponse);
+        removeRequestId(request, servletResponse);
         setDubboRequestId0(null);
     }
 

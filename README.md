@@ -1,7 +1,7 @@
 # security-filter
 
 #### 介绍
-不需要复杂配置的用户登录拦截器.
+不需要复杂配置的用户登录拦截器.解决了dubbo-filter中嵌套调用dubbo查询问题
 
 
 #### 软件架构
@@ -18,7 +18,7 @@
         <dependency>
             <groupId>com.github.wangzihaogithub</groupId>
             <artifactId>security-filter</artifactId>
-            <version>1.1.2</version>
+            <version>1.1.3</version>
         </dependency>
         
 2.  实现业务逻辑

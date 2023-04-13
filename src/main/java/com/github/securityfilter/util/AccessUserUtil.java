@@ -67,6 +67,11 @@ public class AccessUserUtil {
     }
 
     public static Object getAccessUserIfExist() {
+        Object value = getAccessUserIfExistNull();
+        return value == NULL ? null : value;
+    }
+
+    public static Object getAccessUserIfExistNull() {
         Object value = getCurrentThreadAccessUser();
         if (value == null && PlatformDependentUtil.EXIST_HTTP_SERVLET) {
             value = WebSecurityAccessFilter.getCurrentAccessUserIfExist();
@@ -77,7 +82,7 @@ public class AccessUserUtil {
         if (value == null && PlatformDependentUtil.EXIST_DUBBO_ALIBABA) {
             value = DubboAccessUserUtil.getAlibabaAccessUser();
         }
-        return value == NULL ? null : value;
+        return value;
     }
 
     public static Object getAccessUserValue(String attrName) {
@@ -237,7 +242,7 @@ public class AccessUserUtil {
         if (accessUser == null) {
             accessUser = NULL;
         }
-        Object oldAccessUser = getAccessUserIfExist();
+        Object oldAccessUser = getAccessUserIfExistNull();
         try {
             setAccessUser(accessUser);
             runnable.run();
