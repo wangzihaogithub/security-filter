@@ -14,6 +14,8 @@ public class DubboAccessUserUtil {
     private static final boolean SUPPORT_GET_OBJECT_ATTACHMENT;
     private static final boolean SUPPORT_APACHE_2X_RESTORE_CONTEXT;
     private static final Method APACHE_RESTORE_2X_CONTEXT_METHOD;
+    private static final Method APACHE_RESTORE_3X_METHOD;
+    private static final Method APACHE_STORE_SERVICE_CONTEXT_3X_METHOD;
     private static final boolean SUPPORT_APACHE_3X_RESTORE_SERVICE_CONTEXT;
 
     static {
@@ -48,18 +50,37 @@ public class DubboAccessUserUtil {
         SUPPORT_APACHE_2X_RESTORE_CONTEXT = supportApacheRestoreContext;
 
         boolean supportApacheRestoreServiceContext;
+        Method restoreMethod;
+        Method storeServiceContextMethod;
         try {
             // dubbo3.x
-            Class.forName("org.apache.dubbo.rpc.RpcContext.RestoreServiceContext");
+            Class<?> clazz = Class.forName("org.apache.dubbo.rpc.RpcContext.RestoreServiceContext");
+            restoreMethod = clazz.getDeclaredMethod("restore");
+            restoreMethod.setAccessible(true);
+
+            storeServiceContextMethod = org.apache.dubbo.rpc.RpcContext.class.getDeclaredMethod("storeServiceContext");
+            storeServiceContextMethod.setAccessible(true);
             supportApacheRestoreServiceContext = true;
         } catch (Throwable e) {
             supportApacheRestoreServiceContext = false;
+            storeServiceContextMethod = null;
+            restoreMethod = null;
         }
+        APACHE_RESTORE_3X_METHOD = restoreMethod;
+        APACHE_STORE_SERVICE_CONTEXT_3X_METHOD = storeServiceContextMethod;
         SUPPORT_APACHE_3X_RESTORE_SERVICE_CONTEXT = supportApacheRestoreServiceContext;
     }
 
     private static boolean isUserAttr(String attrName) {
         return attrName != null && attrName.startsWith(ATTR_PREFIX);
+    }
+
+    private static String unwrapUserAttrName(String attrName) {
+        if (isUserAttr(attrName)) {
+            return attrName.substring(ATTR_PREFIX.length());
+        } else {
+            return attrName;
+        }
     }
 
     private static String wrapUserAttrName(String attrName) {
@@ -83,11 +104,12 @@ public class DubboAccessUserUtil {
     }
 
     public static Map<String, Object> getApacheAccessUser() {
+        RpcContext context = RpcContext.getContext();
         Set<String> attrNameList;
         if (SUPPORT_GET_OBJECT_ATTACHMENT) {
-            attrNameList = RpcContext.getContext().getObjectAttachments().keySet();
+            attrNameList = context.getObjectAttachments().keySet();
         } else {
-            attrNameList = RpcContext.getContext().getAttachments().keySet();
+            attrNameList = context.getAttachments().keySet();
         }
         Map<String, Object> result = null;
         for (String attrName : attrNameList) {
@@ -96,28 +118,29 @@ public class DubboAccessUserUtil {
             }
             Object value;
             if (SUPPORT_GET_OBJECT_ATTACHMENT) {
-                value = RpcContext.getContext().getObjectAttachment(attrName);
+                value = context.getObjectAttachment(attrName);
             } else {
-                value = RpcContext.getContext().getAttachment(attrName);
+                value = context.getAttachment(attrName);
             }
             if (result == null) {
                 result = new LinkedHashMap<>(6);
             }
-            result.put(attrName, value);
+            result.put(unwrapUserAttrName(attrName), value);
         }
         return result == null || result.isEmpty() ? null : result;
     }
 
     public static Map<String, String> getAlibabaAccessUser() {
+        com.alibaba.dubbo.rpc.RpcContext context = com.alibaba.dubbo.rpc.RpcContext.getContext();
         Map<String, String> result = null;
-        for (String attrName : com.alibaba.dubbo.rpc.RpcContext.getContext().getAttachments().keySet()) {
+        for (String attrName : context.getAttachments().keySet()) {
             if (!isUserAttr(attrName)) {
                 continue;
             }
             if (result == null) {
                 result = new LinkedHashMap<>(6);
             }
-            result.put(attrName, com.alibaba.dubbo.rpc.RpcContext.getContext().getAttachment(attrName));
+            result.put(unwrapUserAttrName(attrName), context.getAttachment(attrName));
         }
         return result == null || result.isEmpty() ? null : result;
     }
@@ -147,29 +170,35 @@ public class DubboAccessUserUtil {
     }
 
     public static void removeApacheAccessUser() {
+        RpcContext context = RpcContext.getContext();
         Set<String> attrNameList;
         if (SUPPORT_GET_OBJECT_ATTACHMENT) {
-            attrNameList = RpcContext.getContext().getObjectAttachments().keySet();
+            attrNameList = context.getObjectAttachments().keySet();
         } else {
-            attrNameList = RpcContext.getContext().getAttachments().keySet();
+            attrNameList = context.getAttachments().keySet();
         }
         for (String attrName : new ArrayList<>(attrNameList)) {
             if (isUserAttr(attrName)) {
-                RpcContext.getContext().removeAttachment(attrName);
+                context.removeAttachment(attrName);
             }
         }
     }
 
     public static void removeAlibabaAccessUser() {
-        for (String attr : new ArrayList<>(com.alibaba.dubbo.rpc.RpcContext.getContext().getAttachments().keySet())) {
+        com.alibaba.dubbo.rpc.RpcContext context = com.alibaba.dubbo.rpc.RpcContext.getContext();
+        for (String attr : new ArrayList<>(context.getAttachments().keySet())) {
             if (isUserAttr(attr)) {
-                com.alibaba.dubbo.rpc.RpcContext.getContext().removeAttachment(attr);
+                context.removeAttachment(attr);
             }
         }
     }
 
     public static void setApacheAccessUser(Object accessUser) {
+        if (AccessUserUtil.isNull(accessUser)) {
+            return;
+        }
         Map<String, Object> beanHandler = BeanMap.toMap(accessUser);
+        RpcContext context = RpcContext.getContext();
         for (Map.Entry<?, ?> entry : beanHandler.entrySet()) {
             Object key = entry.getKey();
             Object value = entry.getValue();
@@ -178,19 +207,23 @@ public class DubboAccessUserUtil {
             }
             String name = wrapUserAttrName((String) key);
             if (value == null) {
-                RpcContext.getContext().removeAttachment(name);
+                context.removeAttachment(name);
             } else if (isBasicType(value)) {
                 if (SUPPORT_GET_OBJECT_ATTACHMENT) {
-                    RpcContext.getContext().setObjectAttachment(name, value);
+                    context.setObjectAttachment(name, value);
                 } else {
-                    RpcContext.getContext().setAttachment(name, value.toString());
+                    context.setAttachment(name, value.toString());
                 }
             }
         }
     }
 
     public static void setAlibabaAccessUser(Object accessUser) {
+        if (AccessUserUtil.isNull(accessUser)) {
+            return;
+        }
         Map<String, Object> beanHandler = BeanMap.toMap(accessUser);
+        com.alibaba.dubbo.rpc.RpcContext context = com.alibaba.dubbo.rpc.RpcContext.getContext();
         for (Map.Entry<?, ?> entry : beanHandler.entrySet()) {
             Object key = entry.getKey();
             Object value = entry.getValue();
@@ -199,9 +232,9 @@ public class DubboAccessUserUtil {
             }
             String name = wrapUserAttrName((String) key);
             if (value == null) {
-                com.alibaba.dubbo.rpc.RpcContext.getContext().removeAttachment(name);
+                context.removeAttachment(name);
             } else if (isBasicType(value)) {
-                com.alibaba.dubbo.rpc.RpcContext.getContext().setAttachment(name, value.toString());
+                context.setAttachment(name, value.toString());
             }
         }
     }
@@ -226,7 +259,6 @@ public class DubboAccessUserUtil {
         }
     }
 
-
     public static boolean isApacheNestingRequest() {
         return RpcContext.getContext().getUrl() != null;
     }
@@ -234,9 +266,14 @@ public class DubboAccessUserUtil {
     public static <T> T apacheNestingRequest(Supplier<T> request) {
         if (SUPPORT_APACHE_3X_RESTORE_SERVICE_CONTEXT) {
             boolean nesting = RpcContext.getContext().getUrl() != null;
-            RpcContext.RestoreServiceContext restoreServiceContext;
+            Object restoreServiceContext;
             if (nesting) {
-                restoreServiceContext = RpcContext.storeServiceContext();
+                try {
+                    restoreServiceContext = APACHE_STORE_SERVICE_CONTEXT_3X_METHOD.invoke(null);
+                } catch (IllegalAccessException | InvocationTargetException e) {
+                    PlatformDependentUtil.sneakyThrows(e);
+                    return null;
+                }
             } else {
                 restoreServiceContext = null;
             }
@@ -244,7 +281,11 @@ public class DubboAccessUserUtil {
                 return request.get();
             } finally {
                 if (restoreServiceContext != null) {
-                    RpcContext.restoreServiceContext(restoreServiceContext);
+                    try {
+                        APACHE_RESTORE_3X_METHOD.invoke(restoreServiceContext);
+                    } catch (IllegalAccessException | InvocationTargetException e) {
+                        PlatformDependentUtil.sneakyThrows(e);
+                    }
                 }
             }
         } else if (SUPPORT_APACHE_2X_RESTORE_CONTEXT) {
@@ -292,12 +333,12 @@ public class DubboAccessUserUtil {
     }
 
     public static boolean isBasicType(Object value) {
-        if (value == null) {
+        if (value == null || value instanceof Class) {
             return false;
         }
         return value.getClass().isPrimitive()
                 || value instanceof Number
-                || value instanceof CharSequence
+                || value instanceof String
                 || value instanceof Date
                 || value instanceof TemporalAccessor
                 || value instanceof Enum;

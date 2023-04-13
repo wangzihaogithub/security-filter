@@ -12,10 +12,10 @@ import java.util.function.Supplier;
  * 创建requestId
  */
 @Activate(group = {"consumer", "provider"}, order = Integer.MIN_VALUE + 100)
-public class DubboRequestIdCreateFilter implements Filter {
+public class DubboRequestIdCreateFilter implements Filter, Filter.Listener {
     private static final SnowflakeIdWorker ID_WORKER = new SnowflakeIdWorker();
     private static final Supplier<String> REQUEST_ID_SUPPLIER = () -> String.valueOf(ID_WORKER.nextId());
-    private static final String ATTR_REQUEST_ID =
+    public static final String ATTR_REQUEST_ID =
             System.getProperty("DubboRequestIdCreateFilter.ATTR_REQUEST_ID", "requestId");
     private final String[] skipInterfacePackets = {"org.apache.dubbo", "com.alibaba"};
 
@@ -62,19 +62,42 @@ public class DubboRequestIdCreateFilter implements Filter {
                 return invoker.invoke(invocation);
             }
         }
-        String requestId = getRequestId(true, invocation);
+
+        dubboBefore(invoker, invocation);
+        Throwable throwable = null;
         try {
-            RpcContext.getContext().setAttachment(ATTR_REQUEST_ID, requestId);
             return invoker.invoke(invocation);
+        } catch (Throwable t) {
+            throwable = t;
+            throw t;
         } finally {
             if (invocation instanceof DecodeableRpcInvocation) {
-                //服务端调用流程结束, 清空数据
-                setRequestId(null);
+                // 服务端调用流程结束, 清空数据
+                dubboAfter(invoker, invocation, false, throwable);
             } else {
-                //客户端调用会换新的RpcContext对象,所以要重新把requestId放进去.
-                setRequestId(requestId);
+                dubboAfter(invoker, invocation, true, throwable);
             }
         }
     }
 
+    @Override
+    public void onResponse(Result appResponse, Invoker<?> invoker, Invocation invocation) {
+        // 客户端调用结束
+        dubboAfter(invoker, invocation, true, null);
+    }
+
+    @Override
+    public void onError(Throwable t, Invoker<?> invoker, Invocation invocation) {
+        // 客户端调用结束
+        dubboAfter(invoker, invocation, true, t);
+    }
+
+    public void dubboBefore(Invoker<?> invoker, Invocation invocation) {
+        String requestId = getRequestId(true, invocation);
+        setRequestId(requestId);
+    }
+
+    public void dubboAfter(Invoker<?> invoker, Invocation invocation, boolean client, Throwable throwable) {
+        setRequestId(null);
+    }
 }

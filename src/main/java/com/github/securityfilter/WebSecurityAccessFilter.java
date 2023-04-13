@@ -1,9 +1,6 @@
 package com.github.securityfilter;
 
-import com.github.securityfilter.util.BeanMap;
-import com.github.securityfilter.util.DubboAccessUserUtil;
-import com.github.securityfilter.util.PlatformDependentUtil;
-import com.github.securityfilter.util.SpringUtil;
+import com.github.securityfilter.util.*;
 
 import javax.servlet.*;
 import javax.servlet.http.Cookie;
@@ -13,7 +10,6 @@ import java.io.IOException;
 import java.nio.charset.Charset;
 import java.util.*;
 import java.util.concurrent.Callable;
-import java.util.function.Supplier;
 
 /**
  * 验证用户身份 (web端)
@@ -29,16 +25,14 @@ public class WebSecurityAccessFilter<USER_ID, ACCESS_USER> implements Filter {
     /**
      * 防止嵌套调用
      */
-    public static final Object NULL = new Object();
-    /**
-     * 跨线程传递当前RPC请求的用户
-     */
-    private static final ThreadLocal<Supplier<Object>> ACCESS_USER_THREAD_LOCAL = new ThreadLocal<>();
+    public static final Object NULL = com.github.securityfilter.util.AccessUserUtil.NULL;
     private static final ThreadLocal<HttpServletRequest> REQUEST_THREAD_LOCAL = new ThreadLocal<>();
     private static final Charset UTF_8 = Charset.forName("UTF-8");
     private static WebSecurityAccessFilter INSTANCE;
 
     private final Set<String> accessTokenParameterNames = new LinkedHashSet<>(3);
+    private final Set<String> excludeUriPatterns = new LinkedHashSet<>(3);
+    private final AntPathMatcher pathMatcher = new AntPathMatcher();
     private Object jacksonObjectMapper;
 
     public WebSecurityAccessFilter() {
@@ -47,6 +41,7 @@ public class WebSecurityAccessFilter<USER_ID, ACCESS_USER> implements Filter {
 
     public WebSecurityAccessFilter(Collection<String> accessTokenKeys) {
         this.accessTokenParameterNames.addAll(accessTokenKeys);
+        this.pathMatcher.setCachePatterns(true);
         INSTANCE = this;
     }
 
@@ -86,6 +81,10 @@ public class WebSecurityAccessFilter<USER_ID, ACCESS_USER> implements Filter {
         return accessTokens == null || accessTokens.length == 0 ? null : accessTokens[0];
     }
 
+    public static boolean isInLifecycle() {
+        return REQUEST_THREAD_LOCAL.get() != null;
+    }
+
     public static <ACCESS_USER> ACCESS_USER getCurrentAccessUserIfCreate(HttpServletRequest request, WebSecurityAccessFilter instance) {
         if (request == null) {
             request = getCurrentRequest();
@@ -94,18 +93,39 @@ public class WebSecurityAccessFilter<USER_ID, ACCESS_USER> implements Filter {
         if (user == NULL) {
             return null;
         } else if (user == null && instance != null) {
-            Object accessUser;
-            if (PlatformDependentUtil.EXIST_DUBBO_APACHE
-                    && DubboAccessUserUtil.isApacheNestingRequest()) {
-                HttpServletRequest finalRequest = request;
-                accessUser = DubboAccessUserUtil.apacheNestingRequest(() -> instance.initAccessUser(finalRequest));
-            } else {
-                accessUser = instance.initAccessUser(request);
-            }
-            return (ACCESS_USER) accessUser;
+            user = createAccessUser(request, instance, true);
+            return user;
         } else {
             return user;
         }
+    }
+
+    public static <ACCESS_USER> ACCESS_USER createAccessUser() {
+        return createAccessUser(null, INSTANCE, true);
+    }
+
+    public static <ACCESS_USER> ACCESS_USER createAccessUser(HttpServletRequest request, WebSecurityAccessFilter instance, boolean cache) {
+        if (instance == null) {
+            return null;
+        }
+        if (request == null) {
+            request = getCurrentRequest();
+        }
+        if (request == null) {
+            return null;
+        }
+        Object accessUser;
+        if (PlatformDependentUtil.EXIST_DUBBO_APACHE
+                && DubboAccessUserUtil.isApacheNestingRequest()) {
+            HttpServletRequest finalRequest = request;
+            accessUser = DubboAccessUserUtil.apacheNestingRequest(() -> instance.initAccessUser(finalRequest));
+        } else {
+            accessUser = instance.initAccessUser(request);
+        }
+        if (cache && isInLifecycle()) {
+            request.setAttribute(REQUEST_ATTR_NAME, accessUser == null ? NULL : accessUser);
+        }
+        return (ACCESS_USER) accessUser;
     }
 
     public static <ACCESS_USER> ACCESS_USER getCurrentAccessUserIfCreate(HttpServletRequest request) {
@@ -138,10 +158,7 @@ public class WebSecurityAccessFilter<USER_ID, ACCESS_USER> implements Filter {
             accessUser = (ACCESS_USER) request.getAttribute(REQUEST_ATTR_NAME);
         }
         if (accessUser == null || accessUser == NULL) {
-            Supplier<Object> accessUserSupplier = ACCESS_USER_THREAD_LOCAL.get();
-            if (accessUserSupplier != null) {
-                accessUser = (ACCESS_USER) accessUserSupplier.get();
-            }
+            accessUser = AccessUserUtil.getCurrentThreadAccessUser();
         }
         return accessUser;
     }
@@ -150,37 +167,46 @@ public class WebSecurityAccessFilter<USER_ID, ACCESS_USER> implements Filter {
         return getCurrentAccessUser(null);
     }
 
-    public static <T> void setCurrentUser(T accessUser) {
+    public static void removeCurrentUser() {
         HttpServletRequest request = getCurrentRequest();
-        if (accessUser == null) {
-            ACCESS_USER_THREAD_LOCAL.remove();
-            if (request != null) {
-                request.removeAttribute(REQUEST_ATTR_NAME);
-            }
-        } else {
-            ACCESS_USER_THREAD_LOCAL.set(() -> accessUser);
-            if (request != null) {
-                request.setAttribute(REQUEST_ATTR_NAME, accessUser);
-            }
+        removeCurrentUser(request);
+    }
+
+    public static void removeCurrentUser(HttpServletRequest request) {
+        AccessUserUtil.removeCurrentThreadAccessUser();
+        if (request != null) {
+            request.removeAttribute(REQUEST_ATTR_NAME);
         }
     }
 
+    public static <T> void setCurrentUser(HttpServletRequest request, T accessUser) {
+        if (accessUser == null) {
+            accessUser = (T) NULL;
+        }
+        AccessUserUtil.setCurrentThreadAccessUser(accessUser);
+        if (request != null) {
+            request.setAttribute(REQUEST_ATTR_NAME, accessUser);
+        }
+    }
+
+    public static <T> void setCurrentUser(T accessUser) {
+        HttpServletRequest request = getCurrentRequest();
+        setCurrentUser(request, accessUser);
+    }
+
     public static String[] getAccessTokens(HttpServletRequest request, Collection<String> accessTokenParameterNames) {
-        Supplier<Object> supplier = ACCESS_USER_THREAD_LOCAL.get();
-        if (supplier != null) {
-            Object accessUser = supplier.get();
-            if (accessUser != null && accessUser != NULL) {
-                Map accessUserGetterMap = BeanMap.toMap(accessUser);
-                for (String accessTokenParameterName : accessTokenParameterNames) {
-                    Object accessToken = accessUserGetterMap.get(accessTokenParameterName);
-                    if (accessToken != null) {
-                        return new String[]{accessToken.toString()};
-                    }
-                }
-                Object accessToken = accessUserGetterMap.get(DEFAULT_ACCESS_TOKEN_PARAMETER_NAME);
+        Object accessUser = AccessUserUtil.getCurrentThreadAccessUser();
+        if (accessUser != null && accessUser != NULL) {
+            Map accessUserGetterMap = BeanMap.toMap(accessUser);
+            for (String accessTokenParameterName : accessTokenParameterNames) {
+                Object accessToken = accessUserGetterMap.get(accessTokenParameterName);
                 if (accessToken != null) {
                     return new String[]{accessToken.toString()};
                 }
+            }
+            Object accessToken = accessUserGetterMap.get(DEFAULT_ACCESS_TOKEN_PARAMETER_NAME);
+            if (accessToken != null) {
+                return new String[]{accessToken.toString()};
             }
         }
         if (request == null) {
@@ -240,27 +266,7 @@ public class WebSecurityAccessFilter<USER_ID, ACCESS_USER> implements Filter {
 
     public static boolean setCurrentAccessUserValue(String attrName, Object value) {
         Object accessUserIfExist = getCurrentAccessUserIfExist(null);
-        return invokeSetter(accessUserIfExist, attrName, value);
-    }
-
-    private static boolean invokeSetter(Object accessUser, String attrName, Object value) {
-        if (accessUser == null) {
-            return false;
-        } else if (accessUser instanceof BeanMap) {
-            BeanMap setterMap = (BeanMap) accessUser;
-            return setterMap.set(attrName, value);
-        } else if (accessUser instanceof Map) {
-            try {
-                Map setterMap = (Map) accessUser;
-                setterMap.put(attrName, value);
-                return true;
-            } catch (UnsupportedOperationException | IllegalStateException e) {
-                return false;
-            }
-        } else {
-            BeanMap setterMap = new BeanMap(accessUser);
-            return setterMap.set(attrName, value);
-        }
+        return TypeUtil.invokeSetter(accessUserIfExist, attrName, value);
     }
 
     private static String getCookieValue(Cookie[] cookies, String name) {
@@ -289,6 +295,38 @@ public class WebSecurityAccessFilter<USER_ID, ACCESS_USER> implements Filter {
 
     public static HttpServletRequest getCurrentRequestSpring() {
         return SpringUtil.getCurrentRequest();
+    }
+
+    protected boolean shouldNotFilter(HttpServletRequest request) throws ServletException {
+        Set<String> excludeUriPatterns = getExcludeUriPatterns();
+        if (excludeUriPatterns == null || excludeUriPatterns.isEmpty()) {
+            return false;
+        }
+
+        String contextPath = request.getContextPath();
+        if (contextPath == null) {
+            contextPath = "";
+        }
+        if ("/".equals(contextPath)) {
+            contextPath = "";
+        }
+        String requestUri = Objects.toString(request.getRequestURI(), "");
+        for (String excludeUriPattern : excludeUriPatterns) {
+            String pattern;
+            if (excludeUriPattern.startsWith("/")) {
+                pattern = excludeUriPattern;
+            } else {
+                pattern = contextPath + "/" + excludeUriPattern;
+            }
+            if (pathMatcher.match(pattern, requestUri, "*")) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    public Set<String> getExcludeUriPatterns() {
+        return excludeUriPatterns;
     }
 
     public Set<String> getAccessTokenParameterNames() {
@@ -322,28 +360,36 @@ public class WebSecurityAccessFilter<USER_ID, ACCESS_USER> implements Filter {
         }
     }
 
+    protected void onNotFilter(HttpServletRequest request, HttpServletResponse response, FilterChain chain) throws ServletException, IOException {
+        chain.doFilter(request, response);
+    }
+
     @Override
     public void doFilter(ServletRequest servletRequest, ServletResponse servletResponse, FilterChain chain) throws IOException, ServletException {
         HttpServletRequest request = (HttpServletRequest) servletRequest;
         HttpServletResponse response = (HttpServletResponse) servletResponse;
 
-        REQUEST_THREAD_LOCAL.set(request);
-        ACCESS_USER_THREAD_LOCAL.remove();
-        try {
-            // 用户不存在
-            ACCESS_USER accessUser = initAccessUser(request);
-            if (accessUser == null) {
-                onAccessFail(request, response, chain, null);
-            } else {
-                if (isAccessSuccess(accessUser)) {
-                    onAccessSuccess(request, response, chain, accessUser);
+        if (shouldNotFilter(request)) {
+            onNotFilter(request, response, chain);
+        } else {
+            REQUEST_THREAD_LOCAL.set(request);
+            removeCurrentUser(request);
+            try {
+                // 用户不存在
+                ACCESS_USER accessUser = initAccessUser(request);
+                if (accessUser == null) {
+                    onAccessFail(request, response, chain, null);
                 } else {
-                    onAccessFail(request, response, chain, accessUser);
+                    if (isAccessSuccess(accessUser)) {
+                        onAccessSuccess(request, response, chain, accessUser);
+                    } else {
+                        onAccessFail(request, response, chain, accessUser);
+                    }
                 }
+            } finally {
+                removeCurrentUser(request);
+                REQUEST_THREAD_LOCAL.remove();
             }
-        } finally {
-            setCurrentUser(null);
-            REQUEST_THREAD_LOCAL.remove();
         }
     }
 
@@ -366,7 +412,7 @@ public class WebSecurityAccessFilter<USER_ID, ACCESS_USER> implements Filter {
             return accessUser;
         }
         String[] accessTokens = getAccessTokens(request);
-        setCurrentUser(NULL);
+        setCurrentUser(request, NULL);
         try {
             for (String accessToken : accessTokens) {
                 if (accessToken == null || accessToken.isEmpty()) {
@@ -384,8 +430,7 @@ public class WebSecurityAccessFilter<USER_ID, ACCESS_USER> implements Filter {
                 }
             }
         } finally {
-            ACCESS_USER_THREAD_LOCAL.remove();
-            request.setAttribute(REQUEST_ATTR_NAME, accessUser);
+            removeCurrentUser(request);
         }
         return accessUser;
     }
@@ -435,7 +480,7 @@ public class WebSecurityAccessFilter<USER_ID, ACCESS_USER> implements Filter {
             }
         }
 
-        if (PlatformDependentUtil.FASTJSON_TO_JSON_STRING_METHOD != null) {
+        if (bytes == null && PlatformDependentUtil.FASTJSON_TO_JSON_STRING_METHOD != null) {
             try {
                 Object jsonString = PlatformDependentUtil.FASTJSON_TO_JSON_STRING_METHOD.invoke(null, body);
                 if (jsonString instanceof String) {
