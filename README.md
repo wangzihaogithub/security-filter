@@ -18,7 +18,7 @@
         <dependency>
             <groupId>com.github.wangzihaogithub</groupId>
             <artifactId>security-filter</artifactId>
-            <version>1.1.3</version>
+            <version>1.1.4</version>
         </dependency>
         
 2.  实现业务逻辑

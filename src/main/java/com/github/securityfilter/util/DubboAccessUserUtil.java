@@ -7,6 +7,7 @@ import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.time.temporal.TemporalAccessor;
 import java.util.*;
+import java.util.concurrent.CompletableFuture;
 import java.util.function.Supplier;
 
 public class DubboAccessUserUtil {
@@ -97,6 +98,10 @@ public class DubboAccessUserUtil {
         } else {
             return RpcContext.getContext().getAttachment(wrapUserAttrName(name));
         }
+    }
+
+    public <T> CompletableFuture<T> getCompletableFuture() {
+        return new AccessUserCompletableFuture<>(RpcContext.getContext().getCompletableFuture());
     }
 
     public static String getAlibabaAccessUserValue(String name) {

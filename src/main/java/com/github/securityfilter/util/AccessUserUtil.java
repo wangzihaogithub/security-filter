@@ -4,6 +4,7 @@ import com.github.securityfilter.WebSecurityAccessFilter;
 
 import java.util.Map;
 import java.util.concurrent.Callable;
+import java.util.concurrent.CompletableFuture;
 import java.util.function.Supplier;
 
 public class AccessUserUtil {
@@ -254,6 +255,22 @@ public class AccessUserUtil {
                 setAccessUser(oldAccessUser);
             }
         }
+    }
+
+    public static <T> AccessUserCompletableFuture<T> completableFuture() {
+        return new AccessUserCompletableFuture<>();
+    }
+
+    public static <T> AccessUserCompletableFuture<T> completableFuture(CompletableFuture<T> future) {
+        return new AccessUserCompletableFuture<>(future);
+    }
+
+    public static <T> AccessUserCompletableFuture<T> completableFuture(Object accessUser) {
+        return new AccessUserCompletableFuture<>(accessUser);
+    }
+
+    public static <T> AccessUserCompletableFuture<T> completableFuture(Object accessUser, CompletableFuture<T> future) {
+        return new AccessUserCompletableFuture<>(accessUser, future);
     }
 
     @FunctionalInterface
