@@ -6,11 +6,15 @@ import org.apache.dubbo.common.extension.Activate;
 import org.apache.dubbo.rpc.*;
 import org.apache.dubbo.rpc.protocol.dubbo.DecodeableRpcInvocation;
 
+import java.util.Map;
+
 @Activate(
         group = {"consumer"},
         order = 51
 )
 public class DubboAccessUserFilter implements Filter, Filter.Listener {
+    private static final String INVOCATION_ATTRIBUTE_KEY = System.getProperty("DubboAccessUserFilter.INVOCATION_ATTRIBUTE_KEY", "accessUser");
+
     private final String[] skipInterfacePackets = {"org.apache.dubbo", "com.alibaba"};
 
     @Override
@@ -49,10 +53,40 @@ public class DubboAccessUserFilter implements Filter, Filter.Listener {
     }
 
     public void dubboBefore(Invoker<?> invoker, Invocation invocation) {
-        DubboAccessUserUtil.setApacheAccessUser(AccessUserUtil.getAccessUser());
+        Map<String, Object> apacheAccessUser = DubboAccessUserUtil.getApacheAccessUser();
+        Object accessUser = apacheAccessUser == null ? AccessUserUtil.getAccessUser() : DubboAccessUserUtil.getApacheAccessUser();
+        DubboAccessUserUtil.setApacheAccessUser(accessUser);
+
+        // 保存现场
+        store(invoker, invocation, apacheAccessUser);
     }
 
     public void dubboAfter(Invoker<?> invoker, Invocation invocation, boolean client, Throwable throwable) {
         DubboAccessUserUtil.removeApacheAccessUser();
+        // 还原现场
+        restore(invoker, invocation, client, throwable);
     }
+
+    /**
+     * 保存现场
+     */
+    public void store(Invoker<?> invoker, Invocation invocation, Map<String, Object> apacheAccessUser) {
+        invocation.put(INVOCATION_ATTRIBUTE_KEY, apacheAccessUser);
+    }
+
+    /**
+     * 还原现场
+     *
+     * @param invoker
+     * @param invocation
+     * @param client
+     * @param throwable
+     */
+    public void restore(Invoker<?> invoker, Invocation invocation, boolean client, Throwable throwable) {
+        Object apacheAccessUser = invocation.get(INVOCATION_ATTRIBUTE_KEY);
+        if (apacheAccessUser != null) {
+            DubboAccessUserUtil.setApacheAccessUser(apacheAccessUser);
+        }
+    }
+
 }

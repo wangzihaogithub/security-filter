@@ -1,5 +1,6 @@
 package com.github.securityfilter.util;
 
+import java.util.concurrent.Callable;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.Executor;
@@ -39,6 +40,22 @@ public class AccessUserCompletableFuture<T> extends CompletableFuture<T> {
                 complete(t);
             }
         });
+    }
+
+    public AccessUserCompletableFuture(Callable<? extends CompletionStage> futureSupplier) {
+        this.accessUser = AccessUserUtil.getAccessUserIfExist();
+        try {
+            CompletionStage<T> future = futureSupplier.call();
+            future.whenComplete((t, throwable) -> {
+                if (throwable != null) {
+                    completeExceptionally(throwable);
+                } else {
+                    complete(t);
+                }
+            });
+        } catch (Throwable t) {
+            PlatformDependentUtil.sneakyThrows(t);
+        }
     }
 
     @Override
