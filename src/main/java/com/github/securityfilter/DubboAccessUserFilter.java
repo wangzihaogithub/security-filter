@@ -52,7 +52,7 @@ public class DubboAccessUserFilter implements Filter, Filter.Listener {
         dubboAfter(invoker, invocation, true, t);
     }
 
-    public void dubboBefore(Invoker<?> invoker, Invocation invocation) {
+    protected void dubboBefore(Invoker<?> invoker, Invocation invocation) {
         Map<String, Object> apacheAccessUser = DubboAccessUserUtil.getApacheAccessUser();
         Object accessUser = apacheAccessUser == null ? AccessUserUtil.getAccessUser() : DubboAccessUserUtil.getApacheAccessUser();
         DubboAccessUserUtil.setApacheAccessUser(accessUser);
@@ -61,7 +61,7 @@ public class DubboAccessUserFilter implements Filter, Filter.Listener {
         store(invoker, invocation, apacheAccessUser);
     }
 
-    public void dubboAfter(Invoker<?> invoker, Invocation invocation, boolean client, Throwable throwable) {
+    protected void dubboAfter(Invoker<?> invoker, Invocation invocation, boolean client, Throwable throwable) {
         DubboAccessUserUtil.removeApacheAccessUser();
         // 还原现场
         restore(invoker, invocation, client, throwable);
@@ -70,7 +70,7 @@ public class DubboAccessUserFilter implements Filter, Filter.Listener {
     /**
      * 保存现场
      */
-    public void store(Invoker<?> invoker, Invocation invocation, Map<String, Object> apacheAccessUser) {
+    protected void store(Invoker<?> invoker, Invocation invocation, Map<String, Object> apacheAccessUser) {
         invocation.put(INVOCATION_ATTRIBUTE_KEY, apacheAccessUser);
     }
 
@@ -82,7 +82,7 @@ public class DubboAccessUserFilter implements Filter, Filter.Listener {
      * @param client
      * @param throwable
      */
-    public void restore(Invoker<?> invoker, Invocation invocation, boolean client, Throwable throwable) {
+    protected void restore(Invoker<?> invoker, Invocation invocation, boolean client, Throwable throwable) {
         Object apacheAccessUser = invocation.get(INVOCATION_ATTRIBUTE_KEY);
         if (apacheAccessUser != null) {
             DubboAccessUserUtil.setApacheAccessUser(apacheAccessUser);
