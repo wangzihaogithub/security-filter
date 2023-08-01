@@ -10,18 +10,26 @@ import java.util.function.Consumer;
 import java.util.function.Function;
 
 public class AccessUserCompletableFuture<T> extends CompletableFuture<T> {
+    public static final String ATTR_REQUEST_ID = System.getProperty("AccessUserCompletableFuture.ATTR_REQUEST_ID", PlatformDependentUtil.ATTR_REQUEST_ID);
     private final Object accessUser;
-
-    public AccessUserCompletableFuture(Object accessUser) {
-        this.accessUser = accessUser;
-    }
+    private final String requestId;
 
     public AccessUserCompletableFuture() {
-        this.accessUser = AccessUserUtil.getAccessUserIfExist();
+        this(AccessUserUtil.getAccessUserIfExist(), PlatformDependentUtil.mdcGet(ATTR_REQUEST_ID));
     }
 
+    public AccessUserCompletableFuture(Object accessUser, String requestId) {
+        this.accessUser = accessUser;
+        this.requestId = requestId;
+    }
+
+    public AccessUserCompletableFuture(Object accessUser) {
+        this(accessUser, PlatformDependentUtil.mdcGet(ATTR_REQUEST_ID));
+    }
+
+
     public AccessUserCompletableFuture(CompletionStage<T> stage) {
-        this.accessUser = AccessUserUtil.getAccessUserIfExist();
+        this(AccessUserUtil.getAccessUserIfExist(), PlatformDependentUtil.mdcGet(ATTR_REQUEST_ID));
         stage.whenComplete((t, throwable) -> {
             if (throwable != null) {
                 completeExceptionally(throwable);
@@ -32,7 +40,7 @@ public class AccessUserCompletableFuture<T> extends CompletableFuture<T> {
     }
 
     public AccessUserCompletableFuture(Object accessUser, CompletionStage<T> stage) {
-        this.accessUser = accessUser;
+        this(accessUser, PlatformDependentUtil.mdcGet(ATTR_REQUEST_ID));
         stage.whenComplete((t, throwable) -> {
             if (throwable != null) {
                 completeExceptionally(throwable);
@@ -43,7 +51,7 @@ public class AccessUserCompletableFuture<T> extends CompletableFuture<T> {
     }
 
     public AccessUserCompletableFuture(Callable<? extends CompletionStage> futureSupplier) {
-        this.accessUser = AccessUserUtil.getAccessUserIfExist();
+        this(AccessUserUtil.getAccessUserIfExist(), PlatformDependentUtil.mdcGet(ATTR_REQUEST_ID));
         try {
             CompletionStage<T> future = futureSupplier.call();
             future.whenComplete((t, throwable) -> {
@@ -268,39 +276,48 @@ public class AccessUserCompletableFuture<T> extends CompletableFuture<T> {
     }
 
     protected Runnable runOnAccessUser(Runnable action) {
-        return () -> AccessUserUtil.runOnAccessUser(accessUser, action::run);
+        return () -> PlatformDependentUtil.runOnMDC(ATTR_REQUEST_ID, requestId,
+                () -> AccessUserUtil.runOnAccessUser(accessUser, action::run));
     }
 
     protected Consumer<? super T> runOnAccessUser(Consumer<? super T> action) {
-        return t -> AccessUserUtil.runOnAccessUser(accessUser, () -> action.accept(t));
+        return t -> PlatformDependentUtil.runOnMDC(ATTR_REQUEST_ID, requestId,
+                () -> AccessUserUtil.runOnAccessUser(accessUser, () -> action.accept(t)));
     }
 
     protected <U> Function<? super T, ? extends U> runOnAccessUser(Function<? super T, ? extends U> fn) {
-        return t -> AccessUserUtil.runOnAccessUser(accessUser, () -> fn.apply(t));
+        return t -> PlatformDependentUtil.runOnMDC(ATTR_REQUEST_ID, requestId,
+                () -> AccessUserUtil.runOnAccessUser(accessUser, () -> fn.apply(t)));
     }
 
     protected <U> Function<? super T, ? extends CompletionStage<U>> runOnAccessUserCompose(Function<? super T, ? extends CompletionStage<U>> fn) {
-        return t -> AccessUserUtil.runOnAccessUser(accessUser, () -> fn.apply(t));
+        return t -> PlatformDependentUtil.runOnMDC(ATTR_REQUEST_ID, requestId,
+                () -> AccessUserUtil.runOnAccessUser(accessUser, () -> fn.apply(t)));
     }
 
     protected <U> BiFunction<? super T, Throwable, ? extends U> runOnAccessUser(BiFunction<? super T, Throwable, ? extends U> fn) {
-        return (t, u) -> AccessUserUtil.runOnAccessUser(accessUser, () -> fn.apply(t, u));
+        return (t, u) -> PlatformDependentUtil.runOnMDC(ATTR_REQUEST_ID, requestId,
+                () -> AccessUserUtil.runOnAccessUser(accessUser, () -> fn.apply(t, u)));
     }
 
     protected BiConsumer<? super T, ? super Throwable> runOnAccessUser(BiConsumer<? super T, ? super Throwable> fn) {
-        return (t, u) -> AccessUserUtil.runOnAccessUser(accessUser, () -> fn.accept(t, u));
+        return (t, u) -> PlatformDependentUtil.runOnMDC(ATTR_REQUEST_ID, requestId,
+                () -> AccessUserUtil.runOnAccessUser(accessUser, () -> fn.accept(t, u)));
     }
 
     protected <U, V> BiFunction<? super T, ? super U, ? extends V> runOnAccessUserCombine(BiFunction<? super T, ? super U, ? extends V> fn) {
-        return (t, u) -> AccessUserUtil.runOnAccessUser(accessUser, () -> fn.apply(t, u));
+        return (t, u) -> PlatformDependentUtil.runOnMDC(ATTR_REQUEST_ID, requestId,
+                () -> AccessUserUtil.runOnAccessUser(accessUser, () -> fn.apply(t, u)));
     }
 
     protected <U> BiConsumer<? super T, ? super U> runOnAccessUserBoth(BiConsumer<? super T, ? super U> fn) {
-        return (t, u) -> AccessUserUtil.runOnAccessUser(accessUser, () -> fn.accept(t, u));
+        return (t, u) -> PlatformDependentUtil.runOnMDC(ATTR_REQUEST_ID, requestId,
+                () -> AccessUserUtil.runOnAccessUser(accessUser, () -> fn.accept(t, u)));
     }
 
     protected Function<Throwable, ? extends T> runOnAccessUserExceptionally(Function<Throwable, ? extends T> fn) {
-        return (t) -> AccessUserUtil.runOnAccessUser(accessUser, () -> fn.apply(t));
+        return (t) -> PlatformDependentUtil.runOnMDC(ATTR_REQUEST_ID, requestId,
+                () -> AccessUserUtil.runOnAccessUser(accessUser, () -> fn.apply(t)));
     }
 
 }

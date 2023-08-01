@@ -1,7 +1,7 @@
 package com.github.securityfilter;
 
+import com.github.securityfilter.util.PlatformDependentUtil;
 import com.github.securityfilter.util.SnowflakeIdWorker;
-import org.slf4j.MDC;
 
 import javax.servlet.*;
 import javax.servlet.http.HttpServletRequest;
@@ -15,8 +15,7 @@ import java.util.function.Supplier;
  * @author hao
  */
 public class WebRequestIdCreateFilter implements Filter {
-    public static final String ATTR_REQUEST_ID =
-            System.getProperty("WebRequestIdCreateFilter.ATTR_REQUEST_ID", "requestId");
+    public static final String ATTR_REQUEST_ID = PlatformDependentUtil.ATTR_REQUEST_ID;
     private static final SnowflakeIdWorker ID_WORKER = new SnowflakeIdWorker();
     private static final Supplier<String> REQUEST_ID_SUPPLIER = () -> String.valueOf(ID_WORKER.nextId());
 
@@ -42,7 +41,7 @@ public class WebRequestIdCreateFilter implements Filter {
         }
 
         if (requestId == null) {
-            requestId = MDC.get(ATTR_REQUEST_ID);
+            requestId = PlatformDependentUtil.mdcGet(ATTR_REQUEST_ID);
             if (requestId != null) {
                 requestId = requestId.substring(ATTR_REQUEST_ID.length() + 1);
             }
@@ -68,7 +67,7 @@ public class WebRequestIdCreateFilter implements Filter {
                 } catch (Exception e) {
                 }
             }
-            MDC.remove(ATTR_REQUEST_ID);
+            PlatformDependentUtil.mdcRemove(ATTR_REQUEST_ID);
         } else {
             if (request != null) {
                 try {
@@ -76,7 +75,7 @@ public class WebRequestIdCreateFilter implements Filter {
                 } catch (Exception e) {
                 }
             }
-            MDC.put(ATTR_REQUEST_ID, ATTR_REQUEST_ID + ":" + requestId);
+            PlatformDependentUtil.mdcPut(ATTR_REQUEST_ID, ATTR_REQUEST_ID + ":" + requestId);
         }
     }
 

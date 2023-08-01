@@ -4,7 +4,6 @@ import com.github.securityfilter.util.AccessUserUtil;
 import com.github.securityfilter.util.DubboAccessUserUtil;
 import org.apache.dubbo.common.extension.Activate;
 import org.apache.dubbo.rpc.*;
-import org.apache.dubbo.rpc.protocol.dubbo.DecodeableRpcInvocation;
 
 import java.util.Map;
 
@@ -12,7 +11,7 @@ import java.util.Map;
         group = {"consumer"},
         order = 51
 )
-public class DubboAccessUserFilter implements Filter, Filter.Listener {
+public class DubboAccessUserFilter implements Filter {
     private static final String INVOCATION_ATTRIBUTE_KEY = System.getProperty("DubboAccessUserFilter.INVOCATION_ATTRIBUTE_KEY", "accessUser");
 
     private final String[] skipInterfacePackets = {"org.apache.dubbo", "com.alibaba"};
@@ -25,46 +24,36 @@ public class DubboAccessUserFilter implements Filter, Filter.Listener {
                 return invoker.invoke(invocation);
             }
         }
-        dubboBefore(invoker, invocation);
         Throwable throwable = null;
+        dubboBefore(invoker, invocation);
         try {
             return invoker.invoke(invocation);
-        } catch (Throwable t) {
-            throwable = t;
-            throw t;
+        } catch (Throwable e) {
+            throwable = e;
+            throw e;
         } finally {
-            if (invocation instanceof DecodeableRpcInvocation) {
-                // 服务端调用流程结束, 清空数据
-                dubboAfter(invoker, invocation, false, throwable);
-            } else {
-                dubboAfter(invoker, invocation, true, throwable);
-            }
+            dubboAfter(invoker, invocation, throwable);
         }
-    }
-
-    @Override
-    public void onResponse(Result appResponse, Invoker<?> invoker, Invocation invocation) {
-        dubboAfter(invoker, invocation, true, null);
-    }
-
-    @Override
-    public void onError(Throwable t, Invoker<?> invoker, Invocation invocation) {
-        dubboAfter(invoker, invocation, true, t);
     }
 
     protected void dubboBefore(Invoker<?> invoker, Invocation invocation) {
         Map<String, Object> apacheAccessUser = DubboAccessUserUtil.getApacheAccessUser();
-        Object accessUser = apacheAccessUser == null ? AccessUserUtil.getAccessUser() : DubboAccessUserUtil.getApacheAccessUser();
-        DubboAccessUserUtil.setApacheAccessUser(accessUser);
+        if (apacheAccessUser == null) {
+            Object accessUser = AccessUserUtil.getAccessUser();
+            if (accessUser != null) {
+                DubboAccessUserUtil.setApacheAccessUser(accessUser);
+                apacheAccessUser = DubboAccessUserUtil.getApacheAccessUser();
+            }
+        }
 
         // 保存现场
         store(invoker, invocation, apacheAccessUser);
     }
 
-    protected void dubboAfter(Invoker<?> invoker, Invocation invocation, boolean client, Throwable throwable) {
+    protected void dubboAfter(Invoker<?> invoker, Invocation invocation, Throwable throwable) {
         DubboAccessUserUtil.removeApacheAccessUser();
         // 还原现场
-        restore(invoker, invocation, client, throwable);
+        restore(invoker, invocation, throwable);
     }
 
     /**
@@ -79,10 +68,9 @@ public class DubboAccessUserFilter implements Filter, Filter.Listener {
      *
      * @param invoker
      * @param invocation
-     * @param client
      * @param throwable
      */
-    protected void restore(Invoker<?> invoker, Invocation invocation, boolean client, Throwable throwable) {
+    protected void restore(Invoker<?> invoker, Invocation invocation, Throwable throwable) {
         Object apacheAccessUser = invocation.get(INVOCATION_ATTRIBUTE_KEY);
         if (apacheAccessUser != null) {
             DubboAccessUserUtil.setApacheAccessUser(apacheAccessUser);
