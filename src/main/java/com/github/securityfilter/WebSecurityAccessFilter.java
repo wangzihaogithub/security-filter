@@ -383,6 +383,7 @@ public class WebSecurityAccessFilter<USER_ID, ACCESS_USER> implements Filter {
                 if (accessUser == null) {
                     onAccessFail(request, response, chain, null);
                 } else {
+                    request.setAttribute(REQUEST_ATTR_NAME, accessUser);
                     if (isAccessSuccess(accessUser)) {
                         onAccessSuccess(request, response, chain, accessUser);
                     } else {

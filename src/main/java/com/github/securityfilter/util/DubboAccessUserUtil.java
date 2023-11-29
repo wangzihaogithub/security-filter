@@ -200,24 +200,25 @@ public class DubboAccessUserUtil {
 
     public static void setApacheAccessUser(Object accessUser) {
         if (AccessUserUtil.isNull(accessUser)) {
-            return;
-        }
-        Map<String, Object> beanHandler = BeanMap.toMap(accessUser);
-        RpcContext context = RpcContext.getContext();
-        for (Map.Entry<?, ?> entry : beanHandler.entrySet()) {
-            Object key = entry.getKey();
-            Object value = entry.getValue();
-            if (!(key instanceof String)) {
-                continue;
-            }
-            String name = wrapUserAttrName((String) key);
-            if (value == null) {
-                context.removeAttachment(name);
-            } else if (isBasicType(value)) {
-                if (SUPPORT_GET_OBJECT_ATTACHMENT) {
-                    context.setObjectAttachment(name, value);
-                } else {
-                    context.setAttachment(name, value.toString());
+            removeApacheAccessUser();
+        } else {
+            Map<String, Object> beanHandler = BeanMap.toMap(accessUser);
+            RpcContext context = RpcContext.getContext();
+            for (Map.Entry<?, ?> entry : beanHandler.entrySet()) {
+                Object key = entry.getKey();
+                Object value = entry.getValue();
+                if (!(key instanceof String)) {
+                    continue;
+                }
+                String name = wrapUserAttrName((String) key);
+                if (value == null) {
+                    context.removeAttachment(name);
+                } else if (isBasicType(value)) {
+                    if (SUPPORT_GET_OBJECT_ATTACHMENT) {
+                        context.setObjectAttachment(name, value);
+                    } else {
+                        context.setAttachment(name, value.toString());
+                    }
                 }
             }
         }
@@ -225,21 +226,22 @@ public class DubboAccessUserUtil {
 
     public static void setAlibabaAccessUser(Object accessUser) {
         if (AccessUserUtil.isNull(accessUser)) {
-            return;
-        }
-        Map<String, Object> beanHandler = BeanMap.toMap(accessUser);
-        com.alibaba.dubbo.rpc.RpcContext context = com.alibaba.dubbo.rpc.RpcContext.getContext();
-        for (Map.Entry<?, ?> entry : beanHandler.entrySet()) {
-            Object key = entry.getKey();
-            Object value = entry.getValue();
-            if (!(key instanceof String)) {
-                continue;
-            }
-            String name = wrapUserAttrName((String) key);
-            if (value == null) {
-                context.removeAttachment(name);
-            } else if (isBasicType(value)) {
-                context.setAttachment(name, value.toString());
+            removeAlibabaAccessUser();
+        } else {
+            Map<String, Object> beanHandler = BeanMap.toMap(accessUser);
+            com.alibaba.dubbo.rpc.RpcContext context = com.alibaba.dubbo.rpc.RpcContext.getContext();
+            for (Map.Entry<?, ?> entry : beanHandler.entrySet()) {
+                Object key = entry.getKey();
+                Object value = entry.getValue();
+                if (!(key instanceof String)) {
+                    continue;
+                }
+                String name = wrapUserAttrName((String) key);
+                if (value == null) {
+                    context.removeAttachment(name);
+                } else if (isBasicType(value)) {
+                    context.setAttachment(name, value.toString());
+                }
             }
         }
     }

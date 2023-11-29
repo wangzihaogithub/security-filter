@@ -2,6 +2,8 @@ package com.github.securityfilter.util;
 
 import com.github.securityfilter.WebSecurityAccessFilter;
 
+import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CompletableFuture;
@@ -45,6 +47,16 @@ public class AccessUserUtil {
         } else {
             return false;
         }
+    }
+
+    public static Map<String, Object> getAccessUserMapIfExist() {
+        Object accessUser = getAccessUserIfExist();
+        return isNull(accessUser) ? Collections.emptyMap() : new LinkedHashMap<>(BeanMap.toMap(accessUser));
+    }
+
+    public static Map<String, Object> getAccessUserMap() {
+        Object accessUser = getAccessUser();
+        return isNull(accessUser) ? Collections.emptyMap() : new LinkedHashMap<>(BeanMap.toMap(accessUser));
     }
 
     public static Object getAccessUser() {
