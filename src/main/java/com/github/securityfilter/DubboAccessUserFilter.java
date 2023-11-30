@@ -7,7 +7,7 @@ import org.apache.dubbo.common.extension.Activate;
 import org.apache.dubbo.rpc.*;
 
 @Activate(
-        group = {"consumer"},
+        group = {"consumer", "provider"},
         order = 51
 )
 public class DubboAccessUserFilter implements Filter {

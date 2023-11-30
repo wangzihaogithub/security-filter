@@ -9,6 +9,8 @@ import org.apache.dubbo.config.ReferenceConfig;
 import org.apache.dubbo.config.RegistryConfig;
 import org.apache.dubbo.config.ServiceConfig;
 import org.apache.dubbo.config.bootstrap.DubboBootstrap;
+import org.apache.dubbo.rpc.AsyncContext;
+import org.apache.dubbo.rpc.RpcContext;
 import org.springframework.util.Assert;
 
 import javax.servlet.DispatcherType;
@@ -22,6 +24,9 @@ import java.io.InputStream;
 import java.net.URL;
 import java.net.URLConnection;
 import java.util.*;
+import java.util.concurrent.Executor;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ThreadLocalRandom;
 
 public class AssertUserEqualsHttpTest {
     static String ZOOKEEPER_ADDRESS = "zookeeper://192.168.20.35:2181";
@@ -53,6 +58,7 @@ public class AssertUserEqualsHttpTest {
                             String url = "http://localhost:" + httpTest.port + "/assertUserEquals?access_token=" + token;
                             String b = new String(readInputToBytes(openConnection(url, 1000, 2000).getInputStream()));
                             Assert.isTrue("true".equals(b), "assertUserEquals:" + b);
+                            Thread.sleep(ThreadLocalRandom.current().nextInt(10, 50));
                         } catch (Exception e) {
                             e.printStackTrace();
                             return;
@@ -96,6 +102,7 @@ public class AssertUserEqualsHttpTest {
         ReferenceConfig<TokenService> reference = new ReferenceConfig<>();
         reference.setInterface(TokenService.class);
         reference.setCheck(false);
+        reference.setInjvm(false);
 
         ServiceConfig<TokenService> service = new ServiceConfig<>();
         service.setInterface(TokenService.class);
@@ -135,12 +142,61 @@ public class AssertUserEqualsHttpTest {
 
         @Override
         public boolean assertUserEquals(Map<String, Object> user) {
-            Map<String, Object> accessUser = AccessUserUtil.getAccessUserMapIfExist();
-            Object id1 = accessUser.get("id");
-            Object id2 = user.get("id");
-            return Objects.equals(id1, id2);
+            AsyncContext asyncContext = RpcContext.startAsync();
+            executor.execute(new DubboAbstractMonitor(() -> {
+                Map<String, Object> accessUser1 = AccessUserUtil.getAccessUserMapIfExist();
+                Object id1 = accessUser1.get("id");
+                Object id2 = user.get("id");
+
+                boolean equals = Objects.equals(id1, id2);
+                asyncContext.write(equals);
+            }));
+            return false;
         }
     }
+
+    public static class WebAbstractMonitor implements Runnable {
+        private Object currentUser;
+        private Runnable runnable;
+
+        public WebAbstractMonitor(Runnable runnable) {
+            this.runnable = runnable;
+            this.currentUser = WebSecurityAccessFilter.getCurrentAccessUserIfCreate();
+        }
+
+        @Override
+        public void run() {
+            try {
+                WebSecurityAccessFilter.setCurrentUser(currentUser);
+                runnable.run();
+            } finally {
+                WebSecurityAccessFilter.removeCurrentUser();
+            }
+        }
+    }
+
+
+    public static class DubboAbstractMonitor implements Runnable {
+        private Object currentUser;
+        private Runnable runnable;
+
+        public DubboAbstractMonitor(Runnable runnable) {
+            this.runnable = runnable;
+            this.currentUser = AccessUserUtil.getAccessUser();
+        }
+
+        @Override
+        public void run() {
+            try {
+                AccessUserUtil.setAccessUser(currentUser);
+                runnable.run();
+            } finally {
+                AccessUserUtil.removeAccessUser();
+            }
+        }
+    }
+
+    static Executor executor = Executors.newFixedThreadPool(50);
 
     private HttpServletProtocol newHttpServletProtocol() {
         ServletContext servletContext = new ServletContext();
@@ -162,8 +218,17 @@ public class AssertUserEqualsHttpTest {
                     @Override
                     protected void doGet(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
                         Map<String, Object> accessUserIfExist = AccessUserUtil.getAccessUserMapIfExist();
-                        boolean b = tokenService.assertUserEquals(accessUserIfExist);
-                        resp.getWriter().write(String.valueOf(b));
+                        javax.servlet.AsyncContext asyncContext = req.startAsync();
+                        executor.execute(new WebAbstractMonitor(() -> {
+                            boolean b = tokenService.assertUserEquals(accessUserIfExist);
+                            try {
+                                resp.getWriter().write(String.valueOf(b));
+
+                                asyncContext.complete();
+                            } catch (IOException e) {
+                                e.printStackTrace();
+                            }
+                        }));
                     }
                 })
                 .addMapping("/assertUserEquals");
