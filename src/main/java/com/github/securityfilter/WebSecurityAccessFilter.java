@@ -110,6 +110,13 @@ public class WebSecurityAccessFilter<USER_ID, ACCESS_USER> implements Filter {
         }
         if (request == null) {
             request = getCurrentRequest();
+        } else {
+            try {
+                //验证 spring-ThreadLocal请求
+                request.getMethod();
+            } catch (Exception e) {
+                return null;
+            }
         }
         if (request == null) {
             return null;
@@ -122,7 +129,7 @@ public class WebSecurityAccessFilter<USER_ID, ACCESS_USER> implements Filter {
         } else {
             accessUser = instance.initAccessUser(request);
         }
-        if (cache && isInLifecycle()) {
+        if (cache) {
             request.setAttribute(REQUEST_ATTR_NAME, accessUser == null ? NULL : accessUser);
         }
         return (ACCESS_USER) accessUser;
@@ -187,6 +194,15 @@ public class WebSecurityAccessFilter<USER_ID, ACCESS_USER> implements Filter {
             accessUser = (T) NULL;
         }
         AccessUserUtil.setCurrentThreadAccessUser(accessUser);
+        if (request != null) {
+            request.setAttribute(REQUEST_ATTR_NAME, accessUser);
+        }
+    }
+
+    public static <T> void setCurrentUserRequestAttribute(HttpServletRequest request, T accessUser) {
+        if (accessUser == null) {
+            accessUser = (T) NULL;
+        }
         if (request != null) {
             request.setAttribute(REQUEST_ATTR_NAME, accessUser);
         }
