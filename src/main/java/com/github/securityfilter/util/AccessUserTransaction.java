@@ -6,7 +6,7 @@ import java.util.concurrent.Callable;
 /**
  * 频繁切换用户时,可以用这个方便一些
  *
- * @see AccessUserUtil#openTransaction()
+ * @see AccessUserUtil#open()
  * <pre>
  *       public static void main(String[] args) {
  *         AccessUserUtil.setAccessUser("abc");

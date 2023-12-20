@@ -6,7 +6,7 @@ import com.github.securityfilter.util.AccessUserUtil;
 public class AccessUserTransactionTest {
     public static void main(String[] args) {
         AccessUserUtil.setAccessUser("abc");
-        try (AccessUserTransaction transaction = AccessUserUtil.openTransaction()) {
+        try (AccessUserTransaction transaction = AccessUserUtil.open()) {
             System.out.println("abc = " + AccessUserUtil.getAccessUser());
             transaction.begin(1);
             System.out.println("1 = " + AccessUserUtil.getAccessUser());
