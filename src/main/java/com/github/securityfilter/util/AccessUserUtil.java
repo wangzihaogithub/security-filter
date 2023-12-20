@@ -5,7 +5,6 @@ import com.github.securityfilter.WebSecurityAccessFilter;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Map;
-import java.util.concurrent.Callable;
 import java.util.concurrent.CompletableFuture;
 import java.util.function.Supplier;
 
@@ -234,7 +233,7 @@ public class AccessUserUtil {
         }
     }
 
-    public static <T> T runOnAccessUser(Object accessUser, Callable<T> runnable) {
+    public static <T> T runOnAccessUser(Object accessUser, Callable0<T> runnable) {
         if (accessUser == null) {
             accessUser = NULL;
         }
@@ -242,7 +241,7 @@ public class AccessUserUtil {
         try {
             setAccessUser(accessUser);
             return runnable.call();
-        } catch (Exception e) {
+        } catch (Throwable e) {
             PlatformDependentUtil.sneakyThrows(e);
             return null;
         } finally {
@@ -310,6 +309,11 @@ public class AccessUserUtil {
      */
     public static AccessUserTransaction open() {
         return new AccessUserTransaction();
+    }
+
+    @FunctionalInterface
+    public interface Callable0<V> {
+        V call() throws Throwable;
     }
 
     @FunctionalInterface

@@ -1,7 +1,6 @@
 package com.github.securityfilter.util;
 
 import java.util.LinkedList;
-import java.util.concurrent.Callable;
 
 /**
  * 频繁切换用户时,可以用这个方便一些
@@ -52,11 +51,11 @@ public class AccessUserTransaction implements AutoCloseable {
         return oldAccessUser;
     }
 
-    public <T> T runOn(Object accessUser, Callable<T> callable) {
+    public <T> T runOn(Object accessUser, AccessUserUtil.Callable0<T> callable) {
         try {
             begin(accessUser);
             return callable.call();
-        } catch (Exception e) {
+        } catch (Throwable e) {
             PlatformDependentUtil.sneakyThrows(e);
             return null;
         } finally {
