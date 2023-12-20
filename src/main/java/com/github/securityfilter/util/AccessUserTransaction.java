@@ -30,12 +30,8 @@ import java.util.concurrent.Callable;
  * </pre>
  */
 public class AccessUserTransaction implements AutoCloseable {
-    private final Object oldAccessUser;
+    private final Object oldAccessUser = AccessUserUtil.getAccessUserIfExistNull();
     private final LinkedList<Object> currentAccessUserList = new LinkedList<>();
-
-    public AccessUserTransaction() {
-        oldAccessUser = AccessUserUtil.getAccessUserIfExistNull();
-    }
 
     public Object begin(Object accessUser) {
         Object old = currentAccessUserList.isEmpty() ? null : currentAccessUserList.get(0);
