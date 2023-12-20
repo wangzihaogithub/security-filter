@@ -34,7 +34,7 @@ public class AccessUserTransaction implements AutoCloseable {
     private final LinkedList<Object> currentAccessUserList = new LinkedList<>();
 
     public Object begin(Object accessUser) {
-        Object old = currentAccessUserList.isEmpty() ? null : currentAccessUserList.get(0);
+        Object old = currentAccessUserList.isEmpty() ? this.oldAccessUser : currentAccessUserList.get(0);
         this.currentAccessUserList.addFirst(accessUser);
         AccessUserUtil.setAccessUser(accessUser);
         return old;
