@@ -178,6 +178,9 @@ public class AccessUserUtil {
             Object accessUser = getCurrentThreadAccessUser();
             setterSuccess = TypeUtil.invokeSetter(accessUser, attrName, value);
         }
+        if (!setterSuccess) {
+            setterSuccess = setDubboAccessUserValue(attrName, value);
+        }
         return setterSuccess;
     }
 
