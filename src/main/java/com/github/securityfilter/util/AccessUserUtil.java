@@ -118,9 +118,8 @@ public class AccessUserUtil {
     }
 
     public static void setAccessUser(Object accessUser) {
-        if (isNull(accessUser)) {
-            removeAccessUser();
-        } else {
+        removeAccessUser();
+        if (isNotNull(accessUser)) {
             if (PlatformDependentUtil.EXIST_HTTP_SERVLET && WebSecurityAccessFilter.isInLifecycle()) {
                 WebSecurityAccessFilter.setCurrentUser(accessUser);
             } else {
@@ -244,10 +243,7 @@ public class AccessUserUtil {
             PlatformDependentUtil.sneakyThrows(e);
             return null;
         } finally {
-            removeAccessUser();
-            if (isNotNull(oldAccessUser)) {
-                setAccessUser(oldAccessUser);
-            }
+            setAccessUser(oldAccessUser);
         }
     }
 
@@ -262,10 +258,7 @@ public class AccessUserUtil {
         } catch (Throwable e) {
             PlatformDependentUtil.sneakyThrows(e);
         } finally {
-            removeAccessUser();
-            if (isNotNull(oldAccessUser)) {
-                setAccessUser(oldAccessUser);
-            }
+            setAccessUser(oldAccessUser);
         }
     }
 

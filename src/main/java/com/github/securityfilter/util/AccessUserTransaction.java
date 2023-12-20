@@ -43,16 +43,12 @@ public class AccessUserTransaction implements AutoCloseable {
     public Object end() {
         Object oldAccessUser;
         if (currentAccessUserList.isEmpty()) {
-            close();
             oldAccessUser = this.oldAccessUser;
         } else {
             currentAccessUserList.removeFirst();
             oldAccessUser = currentAccessUserList.isEmpty() ? this.oldAccessUser : currentAccessUserList.get(0);
-            AccessUserUtil.removeAccessUser();
-            if (AccessUserUtil.isNotNull(oldAccessUser)) {
-                AccessUserUtil.setAccessUser(oldAccessUser);
-            }
         }
+        AccessUserUtil.setAccessUser(oldAccessUser);
         return oldAccessUser;
     }
 
@@ -81,10 +77,7 @@ public class AccessUserTransaction implements AutoCloseable {
 
     @Override
     public void close() {
-        AccessUserUtil.removeAccessUser();
-        if (AccessUserUtil.isNotNull(oldAccessUser)) {
-            AccessUserUtil.setAccessUser(oldAccessUser);
-        }
+        AccessUserUtil.setAccessUser(oldAccessUser);
     }
 
 }
