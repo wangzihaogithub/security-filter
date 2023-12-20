@@ -118,7 +118,7 @@ public class AccessUserUtil {
     }
 
     public static void setAccessUser(Object accessUser) {
-        if (accessUser == null) {
+        if (isNull(accessUser)) {
             removeAccessUser();
         } else {
             if (PlatformDependentUtil.EXIST_HTTP_SERVLET && WebSecurityAccessFilter.isInLifecycle()) {
@@ -245,7 +245,7 @@ public class AccessUserUtil {
             return null;
         } finally {
             removeAccessUser();
-            if (oldAccessUser != null) {
+            if (isNotNull(oldAccessUser)) {
                 setAccessUser(oldAccessUser);
             }
         }
@@ -263,7 +263,7 @@ public class AccessUserUtil {
             PlatformDependentUtil.sneakyThrows(e);
         } finally {
             removeAccessUser();
-            if (oldAccessUser != null) {
+            if (isNotNull(oldAccessUser)) {
                 setAccessUser(oldAccessUser);
             }
         }
@@ -283,6 +283,37 @@ public class AccessUserUtil {
 
     public static <T> AccessUserCompletableFuture<T> completableFuture(Object accessUser, CompletableFuture<T> future) {
         return new AccessUserCompletableFuture<>(accessUser, future);
+    }
+
+
+    /**
+     * 频繁切换用户时,可以用这个方便一些
+     *
+     * @see AccessUserUtil#openTransaction()
+     * <pre>
+     *       public static void main(String[] args) {
+     *         AccessUserUtil.setAccessUser("abc");
+     *         try (AccessUserTransaction transaction = AccessUserUtil.openTransaction()) {
+     *             System.out.println("abc = " + AccessUserUtil.getAccessUser());
+     *             transaction.begin(1);
+     *             System.out.println("1 = " + AccessUserUtil.getAccessUser());
+     *             transaction.begin(2);
+     *             System.out.println("2 = " + AccessUserUtil.getAccessUser());
+     *             transaction.end();
+     *             System.out.println("1 = " + AccessUserUtil.getAccessUser());
+     *             transaction.end();
+     *
+     *             System.out.println("abc = " + AccessUserUtil.getAccessUser());
+     *
+     *             transaction.begin(2);
+     *             System.out.println("2 = " + AccessUserUtil.getAccessUser());
+     *         }
+     *         System.out.println("abc = " + AccessUserUtil.getAccessUser());
+     *     }
+     * </pre>
+     */
+    public static AccessUserTransaction openTransaction() {
+        return new AccessUserTransaction();
     }
 
     @FunctionalInterface
