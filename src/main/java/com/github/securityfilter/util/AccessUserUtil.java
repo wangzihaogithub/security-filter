@@ -3,12 +3,14 @@ package com.github.securityfilter.util;
 import com.github.securityfilter.WebSecurityAccessFilter;
 
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.function.Supplier;
 
 public class AccessUserUtil {
+    public static boolean MERGE_USER = "true".equalsIgnoreCase(System.getProperty("AccessUserUtil.MERGE_USER", "false"));
     public static final Object NULL = new Object();
     /**
      * 跨线程传递当前RPC请求的用户
@@ -21,6 +23,106 @@ public class AccessUserUtil {
 
     public static boolean isNull(Object accessUser) {
         return accessUser == null || accessUser == NULL;
+    }
+
+    public static Object mergeCurrentAccessUser(Object accessUser) {
+        Object accessUserIfExist = getAccessUserIfExistNull();
+        if (isNull(accessUser)) {
+            return isNull(accessUserIfExist) ? null : accessUserIfExist;
+        }
+        if (isNull(accessUserIfExist)) {
+            return accessUser;
+        }
+        Map accessUserIfExistMap = BeanMap.toMap(accessUserIfExist);
+        Map accessUserMap = BeanMap.toMap(accessUser);
+
+        Map<String, Object> merge = new HashMap<>(accessUserIfExistMap);
+        merge.putAll(accessUserMap);
+        return merge;
+    }
+
+    public static Object mergeCurrentAccessUser(Object... accessUserList) {
+        Object accessUserIfExist = getAccessUserIfExistNull();
+        if (accessUserList == null || accessUserList.length == 0) {
+            return isNull(accessUserIfExist) ? null : accessUserIfExist;
+        }
+        if (isNull(accessUserIfExist) && accessUserList.length == 1) {
+            return accessUserList[0];
+        }
+        Map<String, Object> merge = isNull(accessUserIfExist) ? new HashMap<>() : new HashMap<>(BeanMap.toMap(accessUserIfExist));
+        for (Object accessUser : accessUserList) {
+            if (isNull(accessUser)) {
+                continue;
+            }
+            Map accessUserMap = BeanMap.toMap(accessUser);
+            merge.putAll(accessUserMap);
+        }
+        return merge;
+    }
+
+    public static Map<String, Object> mergeCurrentAccessUserMap(Object... accessUserList) {
+        Object accessUserIfExist = getAccessUserIfExistNull();
+        Map<String, Object> merge = isNull(accessUserIfExist) ? new HashMap<>() : new HashMap<>(BeanMap.toMap(accessUserIfExist));
+        if (accessUserList != null && accessUserList.length > 0) {
+            for (Object accessUser : accessUserList) {
+                if (isNull(accessUser)) {
+                    continue;
+                }
+                Map accessUserMap = BeanMap.toMap(accessUser);
+                merge.putAll(accessUserMap);
+            }
+        }
+        return merge;
+    }
+
+    public static Object mergeAccessUser(Object... accessUserList) {
+        if (accessUserList == null || accessUserList.length == 0) {
+            return null;
+        }
+        Object accessUser0 = accessUserList[0];
+        if (isNull(accessUser0) && accessUserList.length == 1) {
+            return accessUser0;
+        }
+        int count = 0;
+        for (Object accessUser : accessUserList) {
+            if (isNotNull(accessUser)) {
+                count++;
+            }
+            if (count > 1) {
+                break;
+            }
+        }
+        if (count == 1) {
+            for (Object accessUser : accessUserList) {
+                if (isNotNull(accessUser)) {
+                    return accessUser;
+                }
+            }
+        }
+        Map<String, Object> merge = new HashMap<>();
+        for (Object accessUser : accessUserList) {
+            if (isNull(accessUser)) {
+                continue;
+            }
+            Map accessUserMap = BeanMap.toMap(accessUser);
+            merge.putAll(accessUserMap);
+        }
+        return merge;
+    }
+
+    public static Object mergeAccessUserMap(Object... accessUserList) {
+        if (accessUserList == null || accessUserList.length == 0) {
+            return new HashMap<>(1);
+        }
+        Map<String, Object> merge = new HashMap<>();
+        for (Object accessUser : accessUserList) {
+            if (isNull(accessUser)) {
+                continue;
+            }
+            Map accessUserMap = BeanMap.toMap(accessUser);
+            merge.putAll(accessUserMap);
+        }
+        return merge;
     }
 
     public static boolean existAccessUser() {
@@ -170,15 +272,15 @@ public class AccessUserUtil {
     }
 
     public static boolean setAccessUserValue(String attrName, Object value) {
-        boolean setterSuccess;
-        if (PlatformDependentUtil.EXIST_HTTP_SERVLET && WebSecurityAccessFilter.isInLifecycle()) {
-            setterSuccess = WebSecurityAccessFilter.setCurrentAccessUserValue(attrName, value);
-        } else {
-            Object accessUser = getCurrentThreadAccessUser();
-            setterSuccess = TypeUtil.invokeSetter(accessUser, attrName, value);
+        boolean setterSuccess = PlatformDependentUtil.EXIST_HTTP_SERVLET
+                && WebSecurityAccessFilter.isInLifecycle()
+                && WebSecurityAccessFilter.setCurrentAccessUserValue(attrName, value);
+        if (setDubboAccessUserValue(attrName, value)) {
+            setterSuccess = true;
         }
-        if (!setterSuccess) {
-            setterSuccess = setDubboAccessUserValue(attrName, value);
+        Object accessUser = getCurrentThreadAccessUser();
+        if (isNotNull(accessUser) && TypeUtil.invokeSetter(accessUser, attrName, value)) {
+            setterSuccess = true;
         }
         return setterSuccess;
     }
@@ -234,12 +336,16 @@ public class AccessUserUtil {
     }
 
     public static <T> T runOnAccessUser(Object accessUser, Callable0<T> runnable) {
+        return runOnAccessUser(accessUser, runnable, MERGE_USER);
+    }
+
+    public static <T> T runOnAccessUser(Object accessUser, Callable0<T> runnable, boolean mergeCurrentUser) {
         if (accessUser == null) {
             accessUser = NULL;
         }
         Object oldAccessUser = getAccessUserIfExist();
         try {
-            setAccessUser(accessUser);
+            setAccessUser(mergeCurrentUser ? mergeAccessUser(oldAccessUser, accessUser) : accessUser);
             return runnable.call();
         } catch (Throwable e) {
             PlatformDependentUtil.sneakyThrows(e);
@@ -250,17 +356,52 @@ public class AccessUserUtil {
     }
 
     public static void runOnAccessUser(Object accessUser, Runnable runnable) {
+        runOnAccessUser(accessUser, runnable, MERGE_USER);
+    }
+
+    public static void runOnAccessUser(Object accessUser, Runnable runnable, boolean mergeCurrentUser) {
         if (accessUser == null) {
             accessUser = NULL;
         }
         Object oldAccessUser = getAccessUserIfExistNull();
         try {
-            setAccessUser(accessUser);
+            setAccessUser(mergeCurrentUser ? mergeAccessUser(oldAccessUser, accessUser) : accessUser);
             runnable.run();
         } catch (Throwable e) {
             PlatformDependentUtil.sneakyThrows(e);
         } finally {
             setAccessUser(oldAccessUser);
+        }
+    }
+
+    public static <T> T runOnAttribute(String attrKey, Object attrValue, Callable0<T> runnable) {
+        Object old = getAccessUserValue(attrKey);
+        try {
+            if (setAccessUserValue(attrKey, attrValue)) {
+                return runnable.call();
+            } else {
+                throw new IllegalStateException("runOnAttribute setAccessUserValue(" + attrKey + ") fail!");
+            }
+        } catch (Throwable e) {
+            PlatformDependentUtil.sneakyThrows(e);
+            return null;
+        } finally {
+            setAccessUserValue(attrKey, old);
+        }
+    }
+
+    public static void runOnAttribute(String attrKey, Object attrValue, Runnable runnable) {
+        Object old = getAccessUserValue(attrKey);
+        try {
+            if (setAccessUserValue(attrKey, attrValue)) {
+                runnable.run();
+            } else {
+                throw new IllegalStateException("runOnAttribute setAccessUserValue(" + attrKey + ") fail!");
+            }
+        } catch (Throwable e) {
+            PlatformDependentUtil.sneakyThrows(e);
+        } finally {
+            setAccessUserValue(attrKey, old);
         }
     }
 

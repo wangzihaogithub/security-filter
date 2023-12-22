@@ -10,9 +10,11 @@ import java.util.function.Consumer;
 import java.util.function.Function;
 
 public class AccessUserCompletableFuture<T> extends CompletableFuture<T> {
+    public static boolean MERGE_USER = "true".equalsIgnoreCase(System.getProperty("AccessUserCompletableFuture.MERGE_USER", "true"));
     public static final String ATTR_REQUEST_ID = System.getProperty("AccessUserCompletableFuture.ATTR_REQUEST_ID", PlatformDependentUtil.ATTR_REQUEST_ID);
     private final Object accessUser;
     private final String requestId;
+    private boolean mergeUser = MERGE_USER;
 
     public AccessUserCompletableFuture() {
         this(AccessUserUtil.getAccessUserIfExist(), PlatformDependentUtil.mdcGet(ATTR_REQUEST_ID));
@@ -26,7 +28,6 @@ public class AccessUserCompletableFuture<T> extends CompletableFuture<T> {
     public AccessUserCompletableFuture(Object accessUser) {
         this(accessUser, PlatformDependentUtil.mdcGet(ATTR_REQUEST_ID));
     }
-
 
     public AccessUserCompletableFuture(CompletionStage<T> stage) {
         this(AccessUserUtil.getAccessUserIfExist(), PlatformDependentUtil.mdcGet(ATTR_REQUEST_ID));
@@ -64,6 +65,14 @@ public class AccessUserCompletableFuture<T> extends CompletableFuture<T> {
         } catch (Throwable t) {
             PlatformDependentUtil.sneakyThrows(t);
         }
+    }
+
+    public void setMergeUser(boolean mergeUser) {
+        this.mergeUser = mergeUser;
+    }
+
+    public boolean isMergeUser() {
+        return mergeUser;
     }
 
     @Override
@@ -253,22 +262,22 @@ public class AccessUserCompletableFuture<T> extends CompletableFuture<T> {
 
     @Override
     public boolean complete(T value) {
-        return Boolean.TRUE.equals(AccessUserUtil.runOnAccessUser(accessUser, () -> super.complete(value)));
+        return Boolean.TRUE.equals(AccessUserUtil.runOnAccessUser(accessUser, () -> super.complete(value), mergeUser));
     }
 
     @Override
     public boolean completeExceptionally(Throwable ex) {
-        return Boolean.TRUE.equals(AccessUserUtil.runOnAccessUser(accessUser, () -> super.completeExceptionally(ex)));
+        return Boolean.TRUE.equals(AccessUserUtil.runOnAccessUser(accessUser, () -> super.completeExceptionally(ex), mergeUser));
     }
 
     @Override
     public void obtrudeException(Throwable ex) {
-        AccessUserUtil.runOnAccessUser(accessUser, () -> super.obtrudeException(ex));
+        AccessUserUtil.runOnAccessUser(accessUser, () -> super.obtrudeException(ex), mergeUser);
     }
 
     @Override
     public void obtrudeValue(T value) {
-        AccessUserUtil.runOnAccessUser(accessUser, () -> super.obtrudeValue(value));
+        AccessUserUtil.runOnAccessUser(accessUser, () -> super.obtrudeValue(value), mergeUser);
     }
 
     protected AccessUserCompletableFuture wrap(CompletableFuture future) {
@@ -277,47 +286,47 @@ public class AccessUserCompletableFuture<T> extends CompletableFuture<T> {
 
     protected Runnable runOnAccessUser(Runnable action) {
         return () -> PlatformDependentUtil.runOnMDC(ATTR_REQUEST_ID, requestId,
-                () -> AccessUserUtil.runOnAccessUser(accessUser, action::run));
+                () -> AccessUserUtil.runOnAccessUser(accessUser, action::run, mergeUser));
     }
 
     protected Consumer<? super T> runOnAccessUser(Consumer<? super T> action) {
         return t -> PlatformDependentUtil.runOnMDC(ATTR_REQUEST_ID, requestId,
-                () -> AccessUserUtil.runOnAccessUser(accessUser, () -> action.accept(t)));
+                () -> AccessUserUtil.runOnAccessUser(accessUser, () -> action.accept(t), mergeUser));
     }
 
     protected <U> Function<? super T, ? extends U> runOnAccessUser(Function<? super T, ? extends U> fn) {
         return t -> PlatformDependentUtil.runOnMDC(ATTR_REQUEST_ID, requestId,
-                () -> AccessUserUtil.runOnAccessUser(accessUser, () -> fn.apply(t)));
+                () -> AccessUserUtil.runOnAccessUser(accessUser, () -> fn.apply(t), mergeUser));
     }
 
     protected <U> Function<? super T, ? extends CompletionStage<U>> runOnAccessUserCompose(Function<? super T, ? extends CompletionStage<U>> fn) {
         return t -> PlatformDependentUtil.runOnMDC(ATTR_REQUEST_ID, requestId,
-                () -> AccessUserUtil.runOnAccessUser(accessUser, () -> fn.apply(t)));
+                () -> AccessUserUtil.runOnAccessUser(accessUser, () -> fn.apply(t), mergeUser));
     }
 
     protected <U> BiFunction<? super T, Throwable, ? extends U> runOnAccessUser(BiFunction<? super T, Throwable, ? extends U> fn) {
         return (t, u) -> PlatformDependentUtil.runOnMDC(ATTR_REQUEST_ID, requestId,
-                () -> AccessUserUtil.runOnAccessUser(accessUser, () -> fn.apply(t, u)));
+                () -> AccessUserUtil.runOnAccessUser(accessUser, () -> fn.apply(t, u), mergeUser));
     }
 
     protected BiConsumer<? super T, ? super Throwable> runOnAccessUser(BiConsumer<? super T, ? super Throwable> fn) {
         return (t, u) -> PlatformDependentUtil.runOnMDC(ATTR_REQUEST_ID, requestId,
-                () -> AccessUserUtil.runOnAccessUser(accessUser, () -> fn.accept(t, u)));
+                () -> AccessUserUtil.runOnAccessUser(accessUser, () -> fn.accept(t, u), mergeUser));
     }
 
     protected <U, V> BiFunction<? super T, ? super U, ? extends V> runOnAccessUserCombine(BiFunction<? super T, ? super U, ? extends V> fn) {
         return (t, u) -> PlatformDependentUtil.runOnMDC(ATTR_REQUEST_ID, requestId,
-                () -> AccessUserUtil.runOnAccessUser(accessUser, () -> fn.apply(t, u)));
+                () -> AccessUserUtil.runOnAccessUser(accessUser, () -> fn.apply(t, u), mergeUser));
     }
 
     protected <U> BiConsumer<? super T, ? super U> runOnAccessUserBoth(BiConsumer<? super T, ? super U> fn) {
         return (t, u) -> PlatformDependentUtil.runOnMDC(ATTR_REQUEST_ID, requestId,
-                () -> AccessUserUtil.runOnAccessUser(accessUser, () -> fn.accept(t, u)));
+                () -> AccessUserUtil.runOnAccessUser(accessUser, () -> fn.accept(t, u), mergeUser));
     }
 
     protected Function<Throwable, ? extends T> runOnAccessUserExceptionally(Function<Throwable, ? extends T> fn) {
         return (t) -> PlatformDependentUtil.runOnMDC(ATTR_REQUEST_ID, requestId,
-                () -> AccessUserUtil.runOnAccessUser(accessUser, () -> fn.apply(t)));
+                () -> AccessUserUtil.runOnAccessUser(accessUser, () -> fn.apply(t), mergeUser));
     }
 
 }
