@@ -907,4 +907,7 @@ public class TypeUtil {
         }
     }
 
+    public static int initialCapacity(int size) {
+        return (int) (size / 0.75F) + 1;
+    }
 }

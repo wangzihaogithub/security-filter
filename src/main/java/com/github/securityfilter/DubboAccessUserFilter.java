@@ -56,7 +56,7 @@ public class DubboAccessUserFilter implements Filter {
             result = new CurrentThreadAccessUserContext(accessUser, consumerSide);
         } else {
             if (PlatformDependentUtil.EXIST_HTTP_SERVLET) {
-                accessUser = WebSecurityAccessFilter.getCurrentAccessUserIfCreate();
+                accessUser = WebSecurityAccessFilter.getCurrentAccessUserIfExist();
             }
             if (accessUser != null) {
                 result = new HttpServletAccessUserContext(accessUser, consumerSide);

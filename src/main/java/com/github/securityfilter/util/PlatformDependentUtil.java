@@ -3,9 +3,18 @@ package com.github.securityfilter.util;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
+import java.util.LinkedList;
 import java.util.concurrent.Callable;
+import java.util.function.Supplier;
 
 public class PlatformDependentUtil {
+    /**
+     * 跨线程传递当前RPC请求的用户
+     */
+    static final ThreadLocal<Supplier<Object>> ACCESS_USER_THREAD_LOCAL = new ThreadLocal<>();
+
+    static final ThreadLocal<LinkedList<AccessUserCloseable>> CLOSEABLE_THREAD_LOCAL = ThreadLocal.withInitial(LinkedList::new);
+
     public static final String ATTR_REQUEST_ID =
             System.getProperty("MDC.ATTR_REQUEST_ID", "requestId");
     public static final boolean EXIST_SPRING_WEB;

@@ -61,7 +61,7 @@ public class AssertUserEqualsHttpTest {
                             Thread.sleep(ThreadLocalRandom.current().nextInt(10, 50));
                         } catch (Exception e) {
                             e.printStackTrace();
-                            return;
+//                            return;
                         }
                     }
                 }
@@ -148,7 +148,17 @@ public class AssertUserEqualsHttpTest {
                 Object id1 = accessUser1.get("id");
                 Object id2 = user.get("id");
 
+                AccessUserUtil.runOnAttribute("id", null, () -> {
+                    Map<String, Object> accessUserMap = AccessUserUtil.getAccessUserMap();
+                    if (!Objects.equals(accessUserMap.get("id"), null)) {
+                        throw new IllegalArgumentException();
+                    }
+                });
+
                 boolean equals = Objects.equals(id1, id2);
+                if (!equals) {
+                    throw new IllegalArgumentException();
+                }
                 asyncContext.write(equals);
             }));
             return false;
@@ -187,12 +197,7 @@ public class AssertUserEqualsHttpTest {
 
         @Override
         public void run() {
-            try {
-                AccessUserUtil.setAccessUser(currentUser);
-                runnable.run();
-            } finally {
-                AccessUserUtil.removeAccessUser();
-            }
+            AccessUserUtil.runOnAccessUser(currentUser, runnable::run);
         }
     }
 

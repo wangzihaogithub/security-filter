@@ -29,25 +29,41 @@ import java.util.LinkedList;
  * </pre>
  */
 public class AccessUserTransaction implements AutoCloseable {
-    private final Object oldAccessUser = AccessUserUtil.getAccessUserIfExistNull();
+    public static boolean MERGE_USER = "true".equalsIgnoreCase(System.getProperty("AccessUserTransaction.MERGE_USER", "false"));
+    private final AccessUserCloseable accessUserCloseable = AccessUserUtil.getAccessUserCloseableIfExistNull();
     private final LinkedList<Object> currentAccessUserList = new LinkedList<>();
+    private boolean mergeUser = MERGE_USER;
+
+    public void setMergeUser(boolean mergeUser) {
+        this.mergeUser = mergeUser;
+    }
+
+    public boolean isMergeUser() {
+        return this.mergeUser;
+    }
 
     public Object begin(Object accessUser) {
-        Object old = currentAccessUserList.isEmpty() ? this.oldAccessUser : currentAccessUserList.get(0);
-        this.currentAccessUserList.addFirst(accessUser);
-        AccessUserUtil.setAccessUser(accessUser);
+        return begin(accessUser, mergeUser);
+    }
+
+    public Object begin(Object accessUser, boolean mergeUser) {
+        Object old = currentAccessUserList.isEmpty() ? accessUserCloseable.getAccessUser() : currentAccessUserList.get(0);
+
+        Object mergeAccessUser = mergeUser && AccessUserUtil.isNotNull(accessUser) ? AccessUserCloseable.mergeAccessUser(old, accessUser) : accessUser;
+        this.currentAccessUserList.addFirst(mergeAccessUser);
+        accessUserCloseable.setAccessUser(mergeAccessUser, false);
         return old;
     }
 
     public Object end() {
         Object oldAccessUser;
         if (currentAccessUserList.isEmpty()) {
-            oldAccessUser = this.oldAccessUser;
+            oldAccessUser = accessUserCloseable.getAccessUser();
         } else {
             currentAccessUserList.removeFirst();
-            oldAccessUser = currentAccessUserList.isEmpty() ? this.oldAccessUser : currentAccessUserList.get(0);
+            oldAccessUser = currentAccessUserList.isEmpty() ? accessUserCloseable.getAccessUser() : currentAccessUserList.get(0);
         }
-        AccessUserUtil.setAccessUser(oldAccessUser);
+        accessUserCloseable.setAccessUser(oldAccessUser, false);
         return oldAccessUser;
     }
 
@@ -76,7 +92,7 @@ public class AccessUserTransaction implements AutoCloseable {
 
     @Override
     public void close() {
-        AccessUserUtil.setAccessUser(oldAccessUser);
+        accessUserCloseable.close();
     }
 
 }

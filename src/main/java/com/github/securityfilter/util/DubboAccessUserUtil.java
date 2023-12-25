@@ -198,10 +198,23 @@ public class DubboAccessUserUtil {
         }
     }
 
+    public static boolean isApacheAccessUser() {
+        RpcContext context = RpcContext.getContext();
+        return context != null && context.getMethodName() != null;
+    }
+
+    public static boolean isAlibabaAccessUser() {
+        com.alibaba.dubbo.rpc.RpcContext context = com.alibaba.dubbo.rpc.RpcContext.getContext();
+        try {
+            return context != null && context.getMethodName() != null;
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
     public static void setApacheAccessUser(Object accessUser) {
-        if (AccessUserUtil.isNull(accessUser)) {
-            removeApacheAccessUser();
-        } else {
+        removeApacheAccessUser();
+        if (AccessUserUtil.isNotNull(accessUser)) {
             Map<String, Object> beanHandler = BeanMap.toMap(accessUser);
             RpcContext context = RpcContext.getContext();
             for (Map.Entry<?, ?> entry : beanHandler.entrySet()) {
@@ -225,9 +238,8 @@ public class DubboAccessUserUtil {
     }
 
     public static void setAlibabaAccessUser(Object accessUser) {
-        if (AccessUserUtil.isNull(accessUser)) {
-            removeAlibabaAccessUser();
-        } else {
+        removeAlibabaAccessUser();
+        if (AccessUserUtil.isNotNull(accessUser)) {
             Map<String, Object> beanHandler = BeanMap.toMap(accessUser);
             com.alibaba.dubbo.rpc.RpcContext context = com.alibaba.dubbo.rpc.RpcContext.getContext();
             for (Map.Entry<?, ?> entry : beanHandler.entrySet()) {
@@ -264,6 +276,14 @@ public class DubboAccessUserUtil {
         } else {
             com.alibaba.dubbo.rpc.RpcContext.getContext().setAttachment(name, value.toString());
         }
+    }
+
+    public static boolean isApacheDubboConsumerSide() {
+        return RpcContext.getContext().isConsumerSide();
+    }
+
+    public static boolean isAlibabaDubboConsumerSide() {
+        return com.alibaba.dubbo.rpc.RpcContext.getContext().isConsumerSide();
     }
 
     public static boolean isApacheNestingRequest() {

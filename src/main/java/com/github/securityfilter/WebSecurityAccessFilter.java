@@ -10,6 +10,7 @@ import java.io.IOException;
 import java.nio.charset.Charset;
 import java.util.*;
 import java.util.concurrent.Callable;
+import java.util.function.Supplier;
 
 /**
  * 验证用户身份 (web端)
@@ -22,13 +23,19 @@ public class WebSecurityAccessFilter<USER_ID, ACCESS_USER> implements Filter {
             System.getProperty("WebSecurityAccessFilter.REQUEST_ATTR_NAME", "user");
     public static final String DEFAULT_ACCESS_TOKEN_PARAMETER_NAME =
             System.getProperty("WebSecurityAccessFilter.DEFAULT_ACCESS_TOKEN_PARAMETER_NAME", "access_token");
+    public static final String REQUEST_ATTR_ONCE_FILTER_NAME =
+            System.getProperty("WebSecurityAccessFilter.REQUEST_ATTR_ONCE_FILTER_NAME", "com.github.securityfilter.WebSecurityAccessFilter#REQUEST_ATTR_ONCE_FILTER");
     /**
      * 防止嵌套调用
      */
-    public static final Object NULL = com.github.securityfilter.util.AccessUserUtil.NULL;
+    public static final Object NULL = AccessUserUtil.NULL;
     private static final ThreadLocal<HttpServletRequest> REQUEST_THREAD_LOCAL = new ThreadLocal<>();
     private static final Charset UTF_8 = Charset.forName("UTF-8");
     private static WebSecurityAccessFilter INSTANCE;
+    /**
+     * 跨线程传递当前RPC请求的用户
+     */
+    private static final ThreadLocal<Supplier<Object>> ACCESS_USER_THREAD_LOCAL = new ThreadLocal<>();
 
     private final Set<String> accessTokenParameterNames = new LinkedHashSet<>(3);
     private final Set<String> excludeUriPatterns = new LinkedHashSet<>(3);
@@ -157,20 +164,18 @@ public class WebSecurityAccessFilter<USER_ID, ACCESS_USER> implements Filter {
     }
 
     public static <ACCESS_USER> ACCESS_USER getCurrentAccessUserIfExist(HttpServletRequest request) {
-        ACCESS_USER accessUser = null;
+        Object accessUser = null;
         if (request == null) {
             request = getCurrentRequest();
         }
         if (request != null) {
-            accessUser = (ACCESS_USER) request.getAttribute(REQUEST_ATTR_NAME);
+            accessUser = request.getAttribute(REQUEST_ATTR_NAME);
         }
-        if (accessUser == null || accessUser == NULL) {
-            ACCESS_USER threadAccessUser = AccessUserUtil.getCurrentThreadAccessUser();
-            if (threadAccessUser != null) {
-                return threadAccessUser;
-            }
+        if (accessUser == null) {
+            Supplier<Object> threadAccessUserSupplier = ACCESS_USER_THREAD_LOCAL.get();
+            accessUser = threadAccessUserSupplier != null ? threadAccessUserSupplier.get() : null;
         }
-        return accessUser;
+        return (ACCESS_USER) accessUser;
     }
 
     public static <ACCESS_USER> ACCESS_USER getCurrentAccessUser() {
@@ -183,7 +188,7 @@ public class WebSecurityAccessFilter<USER_ID, ACCESS_USER> implements Filter {
     }
 
     public static void removeCurrentUser(HttpServletRequest request) {
-        AccessUserUtil.removeCurrentThreadAccessUser();
+        ACCESS_USER_THREAD_LOCAL.remove();
         if (request != null) {
             request.removeAttribute(REQUEST_ATTR_NAME);
         }
@@ -193,7 +198,8 @@ public class WebSecurityAccessFilter<USER_ID, ACCESS_USER> implements Filter {
         if (accessUser == null) {
             accessUser = (T) NULL;
         }
-        AccessUserUtil.setCurrentThreadAccessUser(accessUser);
+        T finalAccessUser = accessUser;
+        ACCESS_USER_THREAD_LOCAL.set(() -> finalAccessUser);
         if (request != null) {
             request.setAttribute(REQUEST_ATTR_NAME, accessUser);
         }
@@ -214,7 +220,8 @@ public class WebSecurityAccessFilter<USER_ID, ACCESS_USER> implements Filter {
     }
 
     public static String[] getAccessTokens(HttpServletRequest request, Collection<String> accessTokenParameterNames) {
-        Object accessUser = AccessUserUtil.getCurrentThreadAccessUser();
+        Supplier<Object> accessUserSupplier = ACCESS_USER_THREAD_LOCAL.get();
+        Object accessUser = accessUserSupplier != null ? accessUserSupplier.get() : null;
         if (accessUser != null && accessUser != NULL) {
             Map accessUserGetterMap = BeanMap.toMap(accessUser);
             for (String accessTokenParameterName : accessTokenParameterNames) {
@@ -285,7 +292,14 @@ public class WebSecurityAccessFilter<USER_ID, ACCESS_USER> implements Filter {
 
     public static boolean setCurrentAccessUserValue(String attrName, Object value) {
         Object accessUserIfExist = getCurrentAccessUserIfExist(null);
-        return TypeUtil.invokeSetter(accessUserIfExist, attrName, value);
+        Map<String, Object> map = new LinkedHashMap<>(2);
+        if (accessUserIfExist == null || accessUserIfExist == NULL) {
+            map.put(attrName, value);
+            setCurrentUser(map);
+            return true;
+        } else {
+            return TypeUtil.invokeSetter(accessUserIfExist, attrName, value);
+        }
     }
 
     private static String getCookieValue(Cookie[] cookies, String name) {
@@ -385,31 +399,38 @@ public class WebSecurityAccessFilter<USER_ID, ACCESS_USER> implements Filter {
 
     @Override
     public void doFilter(ServletRequest servletRequest, ServletResponse servletResponse, FilterChain chain) throws IOException, ServletException {
-        HttpServletRequest request = (HttpServletRequest) servletRequest;
-        HttpServletResponse response = (HttpServletResponse) servletResponse;
+        Object once = servletRequest.getAttribute(REQUEST_ATTR_ONCE_FILTER_NAME);
+        if (once == null) {
+            servletRequest.setAttribute(REQUEST_ATTR_ONCE_FILTER_NAME, Boolean.TRUE);
 
-        if (shouldNotFilter(request)) {
-            onNotFilter(request, response, chain);
-        } else {
-            REQUEST_THREAD_LOCAL.set(request);
-            removeCurrentUser(request);
+            HttpServletRequest request = (HttpServletRequest) servletRequest;
+            HttpServletResponse response = (HttpServletResponse) servletResponse;
             try {
-                // 用户不存在
-                ACCESS_USER accessUser = initAccessUser(request);
-                if (accessUser == null) {
-                    onAccessFail(request, response, chain, null);
+                REQUEST_THREAD_LOCAL.set(request);
+                removeCurrentUser(request);
+                if (shouldNotFilter(request)) {
+                    onNotFilter(request, response, chain);
                 } else {
-                    request.setAttribute(REQUEST_ATTR_NAME, accessUser);
-                    if (isAccessSuccess(accessUser)) {
-                        onAccessSuccess(request, response, chain, accessUser);
+                    // 用户不存在
+                    ACCESS_USER accessUser = initAccessUser(request);
+                    if (accessUser == null) {
+                        onAccessFail(request, response, chain, null);
                     } else {
-                        onAccessFail(request, response, chain, accessUser);
+                        request.setAttribute(REQUEST_ATTR_NAME, accessUser);
+                        if (isAccessSuccess(accessUser)) {
+                            onAccessSuccess(request, response, chain, accessUser);
+                        } else {
+                            onAccessFail(request, response, chain, accessUser);
+                        }
                     }
                 }
             } finally {
+                servletRequest.removeAttribute(REQUEST_ATTR_ONCE_FILTER_NAME);
                 removeCurrentUser(request);
                 REQUEST_THREAD_LOCAL.remove();
             }
+        } else {
+            chain.doFilter(servletRequest, servletResponse);
         }
     }
 
