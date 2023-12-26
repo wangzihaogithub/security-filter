@@ -89,7 +89,10 @@ public class WebSecurityAccessFilter<USER_ID, ACCESS_USER> implements Filter {
     }
 
     public static boolean isInLifecycle() {
-        return REQUEST_THREAD_LOCAL.get() != null;
+        // 考虑DispatcherType
+        // REQUEST_THREAD_LOCAL仅在当前 DispatcherType是自己时有值
+        // SpringServletRequest在所有情况下有值
+        return getCurrentRequest() != null;
     }
 
     public static <ACCESS_USER> ACCESS_USER getCurrentAccessUserIfCreate(HttpServletRequest request, WebSecurityAccessFilter instance) {
@@ -425,8 +428,7 @@ public class WebSecurityAccessFilter<USER_ID, ACCESS_USER> implements Filter {
                     }
                 }
             } finally {
-                servletRequest.removeAttribute(REQUEST_ATTR_ONCE_FILTER_NAME);
-                removeCurrentUser(request);
+                ACCESS_USER_THREAD_LOCAL.remove();
                 REQUEST_THREAD_LOCAL.remove();
             }
         } else {
