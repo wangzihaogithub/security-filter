@@ -42,9 +42,6 @@ public class WebRequestIdCreateFilter implements Filter {
 
         if (requestId == null) {
             requestId = PlatformDependentUtil.mdcGet(ATTR_REQUEST_ID);
-            if (requestId != null) {
-                requestId = requestId.substring(ATTR_REQUEST_ID.length() + 1);
-            }
         }
         if (requestId == null) {
             if (create) {
@@ -75,7 +72,7 @@ public class WebRequestIdCreateFilter implements Filter {
                 } catch (Exception e) {
                 }
             }
-            PlatformDependentUtil.mdcPut(ATTR_REQUEST_ID, ATTR_REQUEST_ID + ":" + requestId);
+            PlatformDependentUtil.mdcPut(ATTR_REQUEST_ID, requestId);
         }
     }
 

@@ -42,7 +42,7 @@ public class AssertUserEqualsHttpTest {
         server.start();
     }
 
-    public static void main(String[] args) {
+    public static void main(String[] args) throws IOException {
         List<AssertUserEqualsHttpTest> list = new ArrayList<>();
         for (int port = 85; port < 90; port++) {
             list.add(new AssertUserEqualsHttpTest(port));
@@ -51,6 +51,9 @@ public class AssertUserEqualsHttpTest {
         list.forEach(e -> e.server.getBootstrapFuture().syncUninterruptibly());
 
         for (AssertUserEqualsHttpTest httpTest : list) {
+            String u1rl = "http://localhost:" + httpTest.port + "/assertUserEquals?access_token=" + 1;
+            String b1 = new String(readInputToBytes(openConnection(u1rl, 1000, 2000).getInputStream()));
+
             new Thread(() -> {
                 while (true) {
                     for (int token = 0; token < 5; token++) {
@@ -143,12 +146,56 @@ public class AssertUserEqualsHttpTest {
         @Override
         public boolean assertUserEquals(Map<String, Object> user) {
             AsyncContext asyncContext = RpcContext.startAsync();
+            Object rootAccessUser = AccessUserUtil.getRootAccessUser(true);
+
+            String s = tokenService.selectUserIdByToken("123");
+
+            AccessUserUtil.runOnAccessUser(1, () -> {
+                if (!Objects.equals(AccessUserUtil.getAccessUser(), 1)) {
+                    throw new IllegalArgumentException();
+                }
+                AccessUserUtil.runOnAccessUser(2, () -> {
+                    if (!Objects.equals(AccessUserUtil.getAccessUser(), 2)) {
+                        throw new IllegalArgumentException();
+                    }
+                    AccessUserUtil.runOnAccessUser(3, () -> {
+                        if (!Objects.equals(AccessUserUtil.getAccessUser(), 3)) {
+                            throw new IllegalArgumentException();
+                        }
+                        AccessUserUtil.runOnRootAccessUser(() -> {
+                            if (!Objects.equals(AccessUserUtil.getAccessUser(), rootAccessUser)) {
+                                throw new IllegalArgumentException();
+                            }
+                            AccessUserUtil.runOnAccessUser(4, () -> {
+                                if (!Objects.equals(AccessUserUtil.getAccessUser(), 4)) {
+                                    throw new IllegalArgumentException();
+                                }
+                                AccessUserUtil.runOnRootAccessUser(() -> {
+                                    if (!Objects.equals(AccessUserUtil.getAccessUser(), rootAccessUser)) {
+                                        throw new IllegalArgumentException();
+                                    }
+                                    AccessUserUtil.runOnRootAccessUser(() -> {
+                                        if (!Objects.equals(AccessUserUtil.getAccessUser(), rootAccessUser)) {
+                                            throw new IllegalArgumentException();
+                                        }
+                                    });
+                                });
+                            });
+                        });
+                    });
+                });
+            });
+
             executor.execute(new DubboAbstractMonitor(() -> {
                 Map<String, Object> accessUser1 = AccessUserUtil.getAccessUserMapIfExist();
                 Object id1 = accessUser1.get("id");
                 Object id2 = user.get("id");
 
+                Object rootAccessUser1 = AccessUserUtil.getRootAccessUser(true);
+
                 AccessUserUtil.runOnAttribute("id", null, () -> {
+                    Object rootAccessUser2 = AccessUserUtil.getRootAccessUser(true);
+
                     Map<String, Object> accessUserMap = AccessUserUtil.getAccessUserMap();
                     if (!Objects.equals(accessUserMap.get("id"), null)) {
                         throw new IllegalArgumentException();
@@ -166,38 +213,29 @@ public class AssertUserEqualsHttpTest {
     }
 
     public static class WebAbstractMonitor implements Runnable {
-        private Object currentUser;
-        private Runnable runnable;
+        private final Runnable runnable;
 
         public WebAbstractMonitor(Runnable runnable) {
-            this.runnable = runnable;
-            this.currentUser = WebSecurityAccessFilter.getCurrentAccessUserIfCreate();
+            this.runnable = AccessUserUtil.runnable(runnable);
         }
 
         @Override
         public void run() {
-            try {
-                WebSecurityAccessFilter.setCurrentUser(currentUser);
-                runnable.run();
-            } finally {
-                WebSecurityAccessFilter.removeCurrentUser();
-            }
+            runnable.run();
         }
     }
 
 
     public static class DubboAbstractMonitor implements Runnable {
-        private Object currentUser;
-        private Runnable runnable;
+        private final Runnable runnable;
 
         public DubboAbstractMonitor(Runnable runnable) {
-            this.runnable = runnable;
-            this.currentUser = AccessUserUtil.getAccessUser();
+            this.runnable = AccessUserUtil.runnable(runnable);
         }
 
         @Override
         public void run() {
-            AccessUserUtil.runOnAccessUser(currentUser, runnable::run);
+            runnable.run();
         }
     }
 
@@ -215,7 +253,9 @@ public class AssertUserEqualsHttpTest {
 
             @Override
             protected Map<String, String> selectUser(HttpServletRequest request, String id, String accessToken) {
-                return tokenService.selectUserByUserId(id);
+                Map stringStringMap = tokenService.selectUserByUserId(id);
+                stringStringMap.put("root", true);
+                return stringStringMap;
             }
         }).addMappingForUrlPatterns(EnumSet.allOf(DispatcherType.class), true, "*");
 
@@ -225,18 +265,23 @@ public class AssertUserEqualsHttpTest {
                         Map<String, Object> accessUserIfExist = AccessUserUtil.getAccessUserMapIfExist();
                         javax.servlet.AsyncContext asyncContext = req.startAsync();
                         executor.execute(new WebAbstractMonitor(() -> {
-                            boolean b = tokenService.assertUserEquals(accessUserIfExist);
-                            try {
-                                resp.getWriter().write(String.valueOf(b));
+                            Map user = new HashMap(accessUserIfExist);
+                            user.put("runOnAccessUser", "a");
+                            AccessUserUtil.runOnAccessUser(user, () -> {
+                                boolean b = tokenService.assertUserEquals(accessUserIfExist);
+                                try {
+                                    resp.getWriter().write(String.valueOf(b));
 
-                                asyncContext.complete();
-                            } catch (IOException e) {
-                                e.printStackTrace();
-                            }
+                                    asyncContext.complete();
+                                } catch (IOException e) {
+                                    e.printStackTrace();
+                                }
+                            });
                         }));
                     }
                 })
                 .addMapping("/assertUserEquals");
+        servletContext.addFilter("DubboWebRequestIdCreateFilter", new DubboWebRequestIdCreateFilter());
         return new HttpServletProtocol(servletContext);
     }
 }

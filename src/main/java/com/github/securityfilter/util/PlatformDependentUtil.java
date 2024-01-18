@@ -3,7 +3,9 @@ package com.github.securityfilter.util;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
+import java.util.HashMap;
 import java.util.LinkedList;
+import java.util.Map;
 import java.util.concurrent.Callable;
 import java.util.function.Supplier;
 
@@ -12,8 +14,8 @@ public class PlatformDependentUtil {
      * 跨线程传递当前RPC请求的用户
      */
     static final ThreadLocal<Supplier<Object>> ACCESS_USER_THREAD_LOCAL = new ThreadLocal<>();
-
-    static final ThreadLocal<LinkedList<AccessUserCloseable>> CLOSEABLE_THREAD_LOCAL = ThreadLocal.withInitial(LinkedList::new);
+    static final ThreadLocal<Map<String, Object>> MDC_THREAD_LOCAL = ThreadLocal.withInitial(() -> new HashMap<>(2));
+    static final ThreadLocal<LinkedList<AccessUserSnapshot>> CLOSEABLE_THREAD_LOCAL = ThreadLocal.withInitial(LinkedList::new);
 
     public static final String ATTR_REQUEST_ID =
             System.getProperty("MDC.ATTR_REQUEST_ID", "requestId");
@@ -121,7 +123,11 @@ public class PlatformDependentUtil {
     public static String mdcGet(String key) {
         if (MDC_GET_METHOD != null) {
             try {
-                return (String) MDC_GET_METHOD.invoke(null, key);
+                Object value = MDC_GET_METHOD.invoke(null, key);
+                if (value == null) {
+                    value = MDC_THREAD_LOCAL.get().get(key);
+                }
+                return value != null ? value.toString() : null;
             } catch (IllegalAccessException | InvocationTargetException e) {
                 sneakyThrows(e);
             }
@@ -129,7 +135,16 @@ public class PlatformDependentUtil {
         return null;
     }
 
+    public static void mdcClose(String key, String value) {
+        if (value == null) {
+            mdcRemove(key);
+        } else {
+            mdcPut(key, value);
+        }
+    }
+
     public static void mdcPut(String key, String value) {
+        MDC_THREAD_LOCAL.get().put(key, value);
         if (MDC_PUT_METHOD != null) {
             try {
                 MDC_PUT_METHOD.invoke(null, key, value);
@@ -140,6 +155,14 @@ public class PlatformDependentUtil {
     }
 
     public static void mdcRemove(String key) {
+        Map<String, Object> map = MDC_THREAD_LOCAL.get();
+        if (!map.isEmpty()) {
+            map.remove(key);
+            if (map.isEmpty()) {
+                MDC_THREAD_LOCAL.remove();
+            }
+        }
+
         if (MDC_REMOVE_METHOD != null) {
             try {
                 MDC_REMOVE_METHOD.invoke(null, key);
@@ -150,32 +173,32 @@ public class PlatformDependentUtil {
     }
 
     public static <R> R runOnMDC(String mdcName, String mdcValue, Callable<R> runnable) {
-        String oldMdcValue = PlatformDependentUtil.mdcGet(mdcName);
+        String oldMdcValue = mdcGet(mdcName);
         try {
-            PlatformDependentUtil.mdcPut(mdcName, mdcValue);
+            mdcPut(mdcName, mdcValue);
             return runnable.call();
         } catch (Throwable e) {
-            PlatformDependentUtil.sneakyThrows(e);
+            sneakyThrows(e);
             return null;
         } finally {
-            PlatformDependentUtil.mdcRemove(mdcName);
+            mdcRemove(mdcName);
             if (oldMdcValue != null) {
-                PlatformDependentUtil.mdcPut(mdcName, oldMdcValue);
+                mdcPut(mdcName, oldMdcValue);
             }
         }
     }
 
     public static void runOnMDC(String mdcName, String mdcValue, AccessUserUtil.Runnable runnable) {
-        String oldMdcValue = PlatformDependentUtil.mdcGet(mdcName);
+        String oldMdcValue = mdcGet(mdcName);
         try {
-            PlatformDependentUtil.mdcPut(mdcName, mdcValue);
+            mdcPut(mdcName, mdcValue);
             runnable.run();
         } catch (Throwable e) {
-            PlatformDependentUtil.sneakyThrows(e);
+            sneakyThrows(e);
         } finally {
-            PlatformDependentUtil.mdcRemove(mdcName);
+            mdcRemove(mdcName);
             if (oldMdcValue != null) {
-                PlatformDependentUtil.mdcPut(mdcName, oldMdcValue);
+                mdcPut(mdcName, oldMdcValue);
             }
         }
     }

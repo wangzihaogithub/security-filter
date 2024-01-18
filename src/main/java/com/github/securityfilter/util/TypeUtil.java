@@ -887,26 +887,6 @@ public class TypeUtil {
         throw new IllegalArgumentException("can not cast to : " + type);
     }
 
-    public static boolean invokeSetter(Object accessUser, String attrName, Object value) {
-        if (accessUser == null) {
-            return false;
-        } else if (accessUser instanceof BeanMap) {
-            BeanMap setterMap = (BeanMap) accessUser;
-            return setterMap.set(attrName, value);
-        } else if (accessUser instanceof Map) {
-            try {
-                Map setterMap = (Map) accessUser;
-                setterMap.put(attrName, value);
-                return true;
-            } catch (UnsupportedOperationException | IllegalStateException e) {
-                return false;
-            }
-        } else {
-            BeanMap setterMap = new BeanMap(accessUser);
-            return setterMap.set(attrName, value);
-        }
-    }
-
     public static int initialCapacity(int size) {
         return (int) (size / 0.75F) + 1;
     }

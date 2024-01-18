@@ -11,6 +11,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.function.Supplier;
 
 public class DubboAccessUserUtil {
+    public static final String ROOT_ATTR_PREFIX = System.getProperty("DubboAccessUserUtil.ROOT_ATTR_PREFIX", "_root_user") + ".";
     public static final String ATTR_PREFIX = System.getProperty("DubboAccessUserUtil.ATTR_PREFIX", "_user") + ".";
     private static final boolean SUPPORT_GET_OBJECT_ATTACHMENT;
     private static final boolean SUPPORT_APACHE_2X_RESTORE_CONTEXT;
@@ -84,6 +85,27 @@ public class DubboAccessUserUtil {
         }
     }
 
+
+    private static String unwrapRootUserAttrName(String attrName) {
+        if (isRootUserAttr(attrName)) {
+            return attrName.substring(ROOT_ATTR_PREFIX.length());
+        } else {
+            return attrName;
+        }
+    }
+
+    private static boolean isRootUserAttr(String attrName) {
+        return attrName != null && attrName.startsWith(ROOT_ATTR_PREFIX);
+    }
+
+    private static String wrapRootUserAttrName(String attrName) {
+        if (isRootUserAttr(attrName)) {
+            return attrName;
+        } else {
+            return ROOT_ATTR_PREFIX + attrName;
+        }
+    }
+
     private static String wrapUserAttrName(String attrName) {
         if (isUserAttr(attrName)) {
             return attrName;
@@ -106,6 +128,33 @@ public class DubboAccessUserUtil {
 
     public static String getAlibabaAccessUserValue(String name) {
         return com.alibaba.dubbo.rpc.RpcContext.getContext().getAttachment(wrapUserAttrName(name));
+    }
+
+    public static Map<String, Object> getApacheRootAccessUser() {
+        RpcContext context = RpcContext.getContext();
+        Set<String> attrNameList;
+        if (SUPPORT_GET_OBJECT_ATTACHMENT) {
+            attrNameList = context.getObjectAttachments().keySet();
+        } else {
+            attrNameList = context.getAttachments().keySet();
+        }
+        Map<String, Object> result = null;
+        for (String attrName : attrNameList) {
+            if (!isRootUserAttr(attrName)) {
+                continue;
+            }
+            Object value;
+            if (SUPPORT_GET_OBJECT_ATTACHMENT) {
+                value = context.getObjectAttachment(attrName);
+            } else {
+                value = context.getAttachment(attrName);
+            }
+            if (result == null) {
+                result = new LinkedHashMap<>(6);
+            }
+            result.put(unwrapRootUserAttrName(attrName), value);
+        }
+        return result == null || result.isEmpty() ? null : result;
     }
 
     public static Map<String, Object> getApacheAccessUser() {
@@ -174,6 +223,21 @@ public class DubboAccessUserUtil {
         return false;
     }
 
+    public static void removeApacheRootAccessUser() {
+        RpcContext context = RpcContext.getContext();
+        Set<String> attrNameList;
+        if (SUPPORT_GET_OBJECT_ATTACHMENT) {
+            attrNameList = context.getObjectAttachments().keySet();
+        } else {
+            attrNameList = context.getAttachments().keySet();
+        }
+        for (String attrName : new ArrayList<>(attrNameList)) {
+            if (isRootUserAttr(attrName)) {
+                context.removeAttachment(attrName);
+            }
+        }
+    }
+
     public static void removeApacheAccessUser() {
         RpcContext context = RpcContext.getContext();
         Set<String> attrNameList;
@@ -224,6 +288,31 @@ public class DubboAccessUserUtil {
                     continue;
                 }
                 String name = wrapUserAttrName((String) key);
+                if (value == null) {
+                    context.removeAttachment(name);
+                } else if (isBasicType(value)) {
+                    if (SUPPORT_GET_OBJECT_ATTACHMENT) {
+                        context.setObjectAttachment(name, value);
+                    } else {
+                        context.setAttachment(name, value.toString());
+                    }
+                }
+            }
+        }
+    }
+
+    public static void setApacheRootAccessUser(Object accessUser) {
+        removeApacheRootAccessUser();
+        if (AccessUserUtil.isNotNull(accessUser)) {
+            Map<String, Object> beanHandler = BeanMap.toMap(accessUser);
+            RpcContext context = RpcContext.getContext();
+            for (Map.Entry<?, ?> entry : beanHandler.entrySet()) {
+                Object key = entry.getKey();
+                Object value = entry.getValue();
+                if (!(key instanceof String)) {
+                    continue;
+                }
+                String name = wrapRootUserAttrName((String) key);
                 if (value == null) {
                     context.removeAttachment(name);
                 } else if (isBasicType(value)) {
@@ -364,6 +453,7 @@ public class DubboAccessUserUtil {
             return false;
         }
         return value.getClass().isPrimitive()
+                || value instanceof Boolean
                 || value instanceof Number
                 || value instanceof String
                 || value instanceof Date

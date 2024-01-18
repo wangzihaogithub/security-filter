@@ -1,5 +1,6 @@
 package com.github.securityfilter;
 
+import com.github.securityfilter.util.AccessUserSnapshot;
 import com.github.securityfilter.util.AccessUserUtil;
 import com.github.securityfilter.util.DubboAccessUserUtil;
 import com.github.securityfilter.util.PlatformDependentUtil;
@@ -38,121 +39,75 @@ public class DubboAccessUserFilter implements Filter {
     }
 
     protected void dubboBefore(Invoker<?> invoker, Invocation invocation, boolean consumerSide) {
-        AccessUserContext accessUserContext = newAccessUserContext(consumerSide);
-        setAccessUserContext(invocation, accessUserContext);
-    }
-
-    protected void dubboAfter(Invoker<?> invoker, Invocation invocation, Throwable throwable, boolean consumerSide) {
-        AccessUserContext accessUserContext = getAccessUserContext(invocation);
+        AutoCloseable accessUserContext = newAccessUserContext(consumerSide);
         if (accessUserContext != null) {
-            accessUserContext.close();
+            setAccessUserContext(invocation, accessUserContext);
         }
     }
 
-    protected AccessUserContext newAccessUserContext(boolean consumerSide) {
-        AccessUserContext result;
+    protected void dubboAfter(Invoker<?> invoker, Invocation invocation, Throwable throwable, boolean consumerSide) {
+        AutoCloseable accessUserContext = getAccessUserContext(invocation);
+        if (accessUserContext != null) {
+            try {
+                accessUserContext.close();
+            } catch (Exception e) {
+                PlatformDependentUtil.sneakyThrows(e);
+            }
+        }
+    }
+
+    protected AutoCloseable newAccessUserContext(boolean consumerSide) {
+        AutoCloseable result;
+        Object runOnRootAccessUser = AccessUserUtil.getRootAccessUser(false);
         Object accessUser = AccessUserUtil.getCurrentThreadAccessUser();
         if (accessUser != null) {
-            result = new CurrentThreadAccessUserContext(accessUser, consumerSide);
+            // 线程上下文（Web，Dubbo（Server，Client），定时器，任务线程） 放DubboRpcContext
+            result = consumerSide ? setAttachment(accessUser, runOnRootAccessUser) : null;
         } else {
             if (PlatformDependentUtil.EXIST_HTTP_SERVLET) {
                 accessUser = WebSecurityAccessFilter.getCurrentAccessUserIfExist();
             }
             if (accessUser != null) {
-                result = new HttpServletAccessUserContext(accessUser, consumerSide);
+                // Web层请求 放DubboRpcContext
+                result = consumerSide ? setAttachment(accessUser, runOnRootAccessUser) : null;
             } else {
                 accessUser = DubboAccessUserUtil.getApacheAccessUser();
                 if (accessUser != null) {
-                    result = new ApacheDubboAccessUserContext(accessUser);
+                    // 服务端接收 放 线程上下文
+                    result = setCurrentThread(accessUser, runOnRootAccessUser);
                 } else {
-                    result = NullAccessUserContext.INSTANCE;
+                    result = null;
                 }
             }
         }
         return result;
     }
 
-    public static void setAccessUserContext(Invocation invocation, AccessUserContext accessUserContext) {
+    public static void setAccessUserContext(Invocation invocation, AutoCloseable accessUserContext) {
         invocation.put(INVOCATION_ATTRIBUTE_KEY, accessUserContext);
     }
 
-    public static AccessUserContext getAccessUserContext(Invocation invocation) {
-        return (AccessUserContext) invocation.get(INVOCATION_ATTRIBUTE_KEY);
+    public static AutoCloseable getAccessUserContext(Invocation invocation) {
+        return (AutoCloseable) invocation.get(INVOCATION_ATTRIBUTE_KEY);
     }
 
-    interface AccessUserContext {
-        void close();
+    private static final AutoCloseable REMOVE_ATTACHMENT = () -> {
+        DubboAccessUserUtil.removeApacheAccessUser();
+        DubboAccessUserUtil.removeApacheRootAccessUser();
+    };
+
+    public static AutoCloseable setAttachment(Object accessUser, Object runOnRootAccessUser) {
+        DubboAccessUserUtil.setApacheAccessUser(accessUser);
+        if (AccessUserUtil.isExistRoot(runOnRootAccessUser) && AccessUserUtil.isNotNull(accessUser)) {
+            DubboAccessUserUtil.setApacheRootAccessUser(runOnRootAccessUser);
+        }
+        return REMOVE_ATTACHMENT;
     }
 
-    static class CurrentThreadAccessUserContext implements AccessUserContext {
-        private final Thread thread = Thread.currentThread();
-        private final Object accessUser;
-        private final boolean consumerSide;
-
-        public CurrentThreadAccessUserContext(Object accessUser, boolean consumerSide) {
-            this.accessUser = accessUser;
-            this.consumerSide = consumerSide;
-            if (consumerSide) {
-                DubboAccessUserUtil.setApacheAccessUser(accessUser);
-            }
-        }
-
-        @Override
-        public void close() {
-            if (thread != Thread.currentThread()) {
-                throw new IllegalStateException("thread");
-            }
-            if (consumerSide) {
-                DubboAccessUserUtil.removeApacheAccessUser();
-            }
-        }
-    }
-
-    static class ApacheDubboAccessUserContext implements AccessUserContext {
-        private final Thread thread = Thread.currentThread();
-        private final Object accessUser;
-
-        public ApacheDubboAccessUserContext(Object accessUser) {
-            this.accessUser = accessUser;
-            AccessUserUtil.setCurrentThreadAccessUser(accessUser);
-        }
-
-        @Override
-        public void close() {
-            if (thread != Thread.currentThread()) {
-                throw new IllegalStateException("thread");
-            }
-            AccessUserUtil.removeCurrentThreadAccessUser();
-        }
-    }
-
-    static class HttpServletAccessUserContext implements AccessUserContext {
-        private final Object accessUser;
-        public final boolean consumerSide;
-
-        public HttpServletAccessUserContext(Object accessUser, boolean consumerSide) {
-            this.accessUser = accessUser;
-            this.consumerSide = consumerSide;
-            if (consumerSide) {
-                DubboAccessUserUtil.setApacheAccessUser(accessUser);
-            }
-        }
-
-        @Override
-        public void close() {
-            if (consumerSide) {
-                DubboAccessUserUtil.removeApacheAccessUser();
-            }
-        }
-    }
-
-    static class NullAccessUserContext implements AccessUserContext {
-        public static final NullAccessUserContext INSTANCE = new NullAccessUserContext();
-
-        @Override
-        public void close() {
-
-        }
+    public static AutoCloseable setCurrentThread(Object accessUser, Object runOnRootAccessUser) {
+        AccessUserSnapshot closeable = new AccessUserSnapshot.CurrentThreadLocal(null, runOnRootAccessUser, false, AccessUserSnapshot.TypeEnum.push);
+        closeable.setAccessUser(accessUser, false);
+        return closeable;
     }
 
 }
