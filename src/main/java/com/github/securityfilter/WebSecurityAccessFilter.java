@@ -301,7 +301,7 @@ public class WebSecurityAccessFilter<USER_ID, ACCESS_USER> implements Filter {
             setCurrentUser(map);
             return true;
         } else {
-            return TypeUtil.invokeSetter(accessUserIfExist, attrName, value);
+            return BeanMap.invokeSetter(accessUserIfExist, attrName, value);
         }
     }
 

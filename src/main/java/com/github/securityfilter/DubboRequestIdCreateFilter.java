@@ -31,9 +31,6 @@ public class DubboRequestIdCreateFilter implements Filter {
         }
         if (requestId == null) {
             requestId = PlatformDependentUtil.mdcGet(ATTR_REQUEST_ID);
-            if (requestId != null) {
-                requestId = requestId.substring(ATTR_REQUEST_ID.length() + 1);
-            }
         }
         if (requestId == null && create) {
             requestId = REQUEST_ID_SUPPLIER.get();
@@ -48,7 +45,7 @@ public class DubboRequestIdCreateFilter implements Filter {
             PlatformDependentUtil.mdcRemove(ATTR_REQUEST_ID);
         } else {
             RpcContext.getContext().setAttachment(ATTR_REQUEST_ID, requestId);
-            PlatformDependentUtil.mdcPut(ATTR_REQUEST_ID, ATTR_REQUEST_ID + ":" + requestId);
+            PlatformDependentUtil.mdcPut(ATTR_REQUEST_ID, requestId);
         }
     }
 

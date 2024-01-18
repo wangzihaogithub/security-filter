@@ -30,7 +30,7 @@ import java.util.LinkedList;
  */
 public class AccessUserTransaction implements AutoCloseable {
     public static boolean MERGE_USER = "true".equalsIgnoreCase(System.getProperty("AccessUserTransaction.MERGE_USER", "false"));
-    private final AccessUserCloseable accessUserCloseable = AccessUserUtil.getAccessUserCloseableIfExistNull();
+    private final AccessUserSnapshot snapshot = AccessUserUtil.openSnapshot();
     private final LinkedList<Object> currentAccessUserList = new LinkedList<>();
     private boolean mergeUser = MERGE_USER;
 
@@ -47,23 +47,23 @@ public class AccessUserTransaction implements AutoCloseable {
     }
 
     public Object begin(Object accessUser, boolean mergeUser) {
-        Object old = currentAccessUserList.isEmpty() ? accessUserCloseable.getAccessUser() : currentAccessUserList.get(0);
+        Object old = currentAccessUserList.isEmpty() ? snapshot.getAccessUser() : currentAccessUserList.get(0);
 
-        Object mergeAccessUser = mergeUser && AccessUserUtil.isNotNull(accessUser) ? AccessUserCloseable.mergeAccessUser(old, accessUser) : accessUser;
+        Object mergeAccessUser = mergeUser && AccessUserUtil.isNotNull(accessUser) ? AccessUserUtil.mergeAccessUser(old, accessUser) : accessUser;
         this.currentAccessUserList.addFirst(mergeAccessUser);
-        accessUserCloseable.setAccessUser(mergeAccessUser, false);
+        snapshot.setAccessUser(mergeAccessUser, false);
         return old;
     }
 
     public Object end() {
         Object oldAccessUser;
         if (currentAccessUserList.isEmpty()) {
-            oldAccessUser = accessUserCloseable.getAccessUser();
+            oldAccessUser = snapshot.getAccessUser();
         } else {
             currentAccessUserList.removeFirst();
-            oldAccessUser = currentAccessUserList.isEmpty() ? accessUserCloseable.getAccessUser() : currentAccessUserList.get(0);
+            oldAccessUser = currentAccessUserList.isEmpty() ? snapshot.getAccessUser() : currentAccessUserList.get(0);
         }
-        accessUserCloseable.setAccessUser(oldAccessUser, false);
+        snapshot.setAccessUser(oldAccessUser, false);
         return oldAccessUser;
     }
 
@@ -92,7 +92,7 @@ public class AccessUserTransaction implements AutoCloseable {
 
     @Override
     public void close() {
-        accessUserCloseable.close();
+        snapshot.close();
     }
 
 }

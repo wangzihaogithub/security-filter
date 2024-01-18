@@ -40,7 +40,7 @@ public class DubboWebRequestIdCreateFilter extends WebRequestIdCreateFilter impl
             PlatformDependentUtil.mdcRemove(ATTR_REQUEST_ID);
         } else {
             RpcContext.getContext().setAttachment(ATTR_REQUEST_ID, requestId);
-            PlatformDependentUtil.mdcPut(ATTR_REQUEST_ID, ATTR_REQUEST_ID + ":" + requestId);
+            PlatformDependentUtil.mdcPut(ATTR_REQUEST_ID, requestId);
         }
     }
 

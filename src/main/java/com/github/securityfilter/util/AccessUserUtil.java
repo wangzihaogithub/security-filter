@@ -2,19 +2,29 @@ package com.github.securityfilter.util;
 
 import com.github.securityfilter.WebSecurityAccessFilter;
 
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.LinkedHashMap;
-import java.util.Map;
+import java.util.*;
+import java.util.concurrent.Callable;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Supplier;
 
-import static com.github.securityfilter.util.PlatformDependentUtil.ACCESS_USER_THREAD_LOCAL;
+import static com.github.securityfilter.util.PlatformDependentUtil.*;
 import static com.github.securityfilter.util.TypeUtil.initialCapacity;
 
 public class AccessUserUtil {
     public static boolean MERGE_USER = "true".equalsIgnoreCase(System.getProperty("AccessUserUtil.MERGE_USER", "false"));
-    public static final Object NULL = new Object();
+    public static final Object NULL = new Object() {
+        @Override
+        public String toString() {
+            return "NULL";
+        }
+    };
+    public static Object NO_EXIST_ROOT = new Object() {
+        @Override
+        public String toString() {
+            return "NO_EXIST_ROOT";
+        }
+    };
 
     public static boolean isNotNull(Object accessUser) {
         return !isNull(accessUser);
@@ -181,6 +191,11 @@ public class AccessUserUtil {
         return TypeUtil.cast(value, type);
     }
 
+    public static <T> T getRootAccessUserValue(String attrName, Class<T> type) {
+        Object value = getRootAccessUserValue(attrName);
+        return TypeUtil.cast(value, type);
+    }
+
     public static <ACCESS_USER> ACCESS_USER getCurrentThreadAccessUser() {
         Supplier<Object> supplier = ACCESS_USER_THREAD_LOCAL.get();
         return supplier != null ? (ACCESS_USER) supplier.get() : null;
@@ -227,34 +242,9 @@ public class AccessUserUtil {
         }
     }
 
-    private static Object getAttrValue(Object accessUser, String attrName) {
-        if (isNull(accessUser)) {
-            return null;
-        }
-        Map accessUserGetterMap;
-        if (accessUser instanceof Map) {
-            accessUserGetterMap = (Map) accessUser;
-        } else {
-            accessUserGetterMap = new BeanMap(accessUser);
-        }
-        return accessUserGetterMap.get(attrName);
-    }
-
     public static Object getCurrentThreadAccessUserValue(String attrName) {
         Object accessUser = getCurrentThreadAccessUser();
-        Object value;
-        if (isNull(accessUser)) {
-            value = null;
-        } else {
-            Map accessUserGetterMap;
-            if (accessUser instanceof Map) {
-                accessUserGetterMap = (Map) accessUser;
-            } else {
-                accessUserGetterMap = new BeanMap(accessUser);
-            }
-            value = accessUserGetterMap.get(attrName);
-        }
-        return value;
+        return isNull(accessUser) ? null : BeanMap.invokeGetter(accessUser, attrName);
     }
 
     public static Object getWebAccessUserValue(String attrName) {
@@ -265,21 +255,8 @@ public class AccessUserUtil {
         if (!PlatformDependentUtil.EXIST_HTTP_SERVLET) {
             return null;
         }
-        Object value;
         Object accessUser = create ? WebSecurityAccessFilter.getCurrentAccessUserIfCreate() : WebSecurityAccessFilter.getCurrentAccessUserIfExist();
-        ;
-        if (isNull(accessUser)) {
-            value = null;
-        } else {
-            Map accessUserGetterMap;
-            if (accessUser instanceof Map) {
-                accessUserGetterMap = (Map) accessUser;
-            } else {
-                accessUserGetterMap = new BeanMap(accessUser);
-            }
-            value = accessUserGetterMap.get(attrName);
-        }
-        return value;
+        return isNull(accessUser) ? null : BeanMap.invokeGetter(accessUser, attrName);
     }
 
     public static void removeAccessUser() {
@@ -299,6 +276,91 @@ public class AccessUserUtil {
         }
     }
 
+    public static boolean isExistRoot(Object rootAccessUser) {
+        return rootAccessUser != NO_EXIST_ROOT;
+    }
+
+    public static Map<String, Object> getRootAccessUserMap(boolean ifMissGetCurrent) {
+        Object rootAccessUser = getRootAccessUser(ifMissGetCurrent);
+        return isNotNull(rootAccessUser) && isExistRoot(rootAccessUser) ? new LinkedHashMap<>(BeanMap.toMap(rootAccessUser)) : null;
+    }
+
+    public static Object getRootAccessUser(boolean ifMissGetCurrent) {
+        if (EXIST_DUBBO_APACHE && DubboAccessUserUtil.isApacheAccessUser()) {
+            Map<String, Object> apacheRootAccessUser = DubboAccessUserUtil.getApacheRootAccessUser();
+            if (apacheRootAccessUser != null) {
+                return apacheRootAccessUser;
+            }
+        }
+
+        LinkedList<AccessUserSnapshot> list = CLOSEABLE_THREAD_LOCAL.get();
+        if (list.isEmpty()) {
+            if (ifMissGetCurrent) {
+                Object accessUser = getAccessUserNull(false);
+                return isNull(accessUser) ? null : accessUser;
+            } else {
+                return NO_EXIST_ROOT;
+            }
+        } else {
+            AccessUserSnapshot[] array = list.toArray(new AccessUserSnapshot[list.size()]);
+            for (int i = array.length - 1; i >= 0; i--) {
+                AccessUserSnapshot snapshot = array[i];
+                if (snapshot.getTypeEnum() == AccessUserSnapshot.TypeEnum.push) {
+                    Object rootAccessUser = snapshot.getRootAccessUser();
+                    if (isExistRoot(rootAccessUser)) {
+                        return isNull(rootAccessUser) ? null : rootAccessUser;
+                    }
+                }
+            }
+            for (int i = array.length - 1; i >= 0; i--) {
+                AccessUserSnapshot snapshot = array[i];
+                if (!(snapshot instanceof AccessUserSnapshot.Null)) {
+                    Object accessUser = snapshot.getAccessUser();
+                    return isNull(accessUser) ? null : accessUser;
+                }
+            }
+        }
+        return NO_EXIST_ROOT;
+    }
+
+    public static void runOnRootAccessUser(AccessUserUtil.Runnable runnable) {
+        Object rootAccessUser = getRootAccessUser(false);
+        if (isExistRoot(rootAccessUser)) {
+            try (AccessUserSnapshot snapshot = AccessUserSnapshot.open(AccessUserSnapshot.TypeEnum.root, rootAccessUser)) {
+                snapshot.setAccessUser(rootAccessUser, false);
+                runnable.run();
+            } catch (Throwable e) {
+                PlatformDependentUtil.sneakyThrows(e);
+            }
+        } else {
+            try {
+                runnable.run();
+            } catch (Throwable e) {
+                PlatformDependentUtil.sneakyThrows(e);
+            }
+        }
+    }
+
+    public static <T> T runOnRootAccessUser(Callable0<T> runnable) {
+        Object rootAccessUser = getRootAccessUser(false);
+        if (isExistRoot(rootAccessUser)) {
+            try (AccessUserSnapshot snapshot = AccessUserSnapshot.open(AccessUserSnapshot.TypeEnum.root, rootAccessUser)) {
+                snapshot.setAccessUser(rootAccessUser, false);
+                return runnable.call();
+            } catch (Throwable e) {
+                PlatformDependentUtil.sneakyThrows(e);
+                return null;
+            }
+        } else {
+            try {
+                return runnable.call();
+            } catch (Throwable e) {
+                PlatformDependentUtil.sneakyThrows(e);
+                return null;
+            }
+        }
+    }
+
     public static <T> T runOnAccessUser(Object accessUser, Callable0<T> runnable) {
         return runOnAccessUser(accessUser, runnable, MERGE_USER);
     }
@@ -308,7 +370,7 @@ public class AccessUserUtil {
     }
 
     public static <T> T runOnAccessUser(Object accessUser, Callable0<T> runnable, boolean mergeCurrentUser) {
-        try (AccessUserCloseable closeable = getAccessUserCloseableIfExistNull()) {
+        try (AccessUserSnapshot closeable = openSnapshot()) {
             closeable.setAccessUser(accessUser, mergeCurrentUser);
             return runnable.call();
         } catch (Throwable e) {
@@ -326,8 +388,8 @@ public class AccessUserUtil {
     }
 
     public static void runOnAccessUser(Object accessUser, Runnable runnable, boolean mergeCurrentUser) {
-        try (AccessUserCloseable closeable = getAccessUserCloseableIfExistNull()) {
-            closeable.setAccessUser(accessUser, mergeCurrentUser);
+        try (AccessUserSnapshot snapshot = openSnapshot()) {
+            snapshot.setAccessUser(accessUser, mergeCurrentUser);
             runnable.run();
         } catch (Throwable e) {
             PlatformDependentUtil.sneakyThrows(e);
@@ -412,52 +474,30 @@ public class AccessUserUtil {
         return getAccessUserNull(false);
     }
 
-    /**
-     * @return 会返回 {@link #NULL}
-     */
-    public static AccessUserCloseable getAccessUserCloseableIfExistNull() {
-        return getAccessUserCloseable(true);
+    public static AccessUserSnapshot getSnapshot() {
+        try (AccessUserSnapshot snapshot = openSnapshot()) {
+            return snapshot;
+        }
     }
 
     /**
      * @return 会将 {@link #NULL}对象，转为null
      */
-    public static AccessUserCloseable getAccessUserCloseable() {
-        return getAccessUserCloseable(false);
-    }
-
-    private static AccessUserCloseable getAccessUserCloseable(boolean nullToObject) {
-        AccessUserCloseable value;
-        Supplier<Object> supplier = ACCESS_USER_THREAD_LOCAL.get();
-        if (supplier != null) {
-            // thread
-            value = new AccessUserCloseable.CurrentThreadCloseable(supplier.get(), nullToObject);
-        } else if (PlatformDependentUtil.EXIST_HTTP_SERVLET && WebSecurityAccessFilter.isInLifecycle()) {
-            // web
-            value = new AccessUserCloseable.WebCloseable(WebSecurityAccessFilter.getCurrentAccessUserIfExist(), nullToObject);
-        } else if (PlatformDependentUtil.EXIST_DUBBO_APACHE && DubboAccessUserUtil.isApacheAccessUser()) {
-            // dubbo apache
-            value = new AccessUserCloseable.DubboApacheCloseable(DubboAccessUserUtil.getApacheAccessUser(), nullToObject);
-        } else if (PlatformDependentUtil.EXIST_DUBBO_ALIBABA && DubboAccessUserUtil.isAlibabaAccessUser()) {
-            // dubbo alibaba
-            value = new AccessUserCloseable.DubboAlibabaCloseable(DubboAccessUserUtil.getAlibabaAccessUser(), nullToObject);
-        } else {
-            // NULL
-            value = new AccessUserCloseable.NullCloseable();
-        }
-        return value;
+    public static AccessUserSnapshot openSnapshot() {
+        return AccessUserSnapshot.open(AccessUserSnapshot.TypeEnum.push, getRootAccessUser(false));
     }
 
     public static Object getAccessUserValue(String attrName) {
-        AccessUserCloseable currentCloseable = AccessUserCloseable.current();
+        AccessUserSnapshot currentSnapshot = AccessUserSnapshot.current();
         Object value;
-        if (currentCloseable != null) {
-            value = currentCloseable.getCurrentAccessUserValue(attrName);
+        if (currentSnapshot != null) {
+            value = currentSnapshot.getCurrentAccessUserValue(attrName);
         } else {
             Supplier<Object> supplier = ACCESS_USER_THREAD_LOCAL.get();
             if (supplier != null) {
                 // thread
-                value = getAttrValue(supplier.get(), attrName);
+                Object accessUser = supplier.get();
+                value = isNull(accessUser) ? null : BeanMap.invokeGetter(accessUser, attrName);
             } else {
                 if (PlatformDependentUtil.EXIST_HTTP_SERVLET && WebSecurityAccessFilter.isInLifecycle()) {
                     // web
@@ -477,11 +517,16 @@ public class AccessUserUtil {
         return value;
     }
 
+    public static Object getRootAccessUserValue(String attrName) {
+        Object rootAccessUser = getRootAccessUser(true);
+        return BeanMap.invokeGetter(rootAccessUser, attrName);
+    }
+
     public static Object getAccessUserNull(boolean create) {
         Object value;
-        AccessUserCloseable currentCloseable = AccessUserCloseable.current();
-        if (currentCloseable != null) {
-            value = currentCloseable.getCurrentAccessUser();
+        AccessUserSnapshot currentSnapshot = AccessUserSnapshot.current();
+        if (currentSnapshot != null) {
+            value = currentSnapshot.getCurrentAccessUser();
         } else {
             Supplier<Object> supplier = ACCESS_USER_THREAD_LOCAL.get();
             if (supplier != null) {
@@ -516,11 +561,7 @@ public class AccessUserUtil {
     public static boolean setAccessUser(Object accessUser) {
         if (isCurrentThreadAccessUser()) {
             // thread
-            if (accessUser == null) {
-                removeCurrentThreadAccessUser();
-            } else {
-                setCurrentThreadAccessUser(accessUser);
-            }
+            setCurrentThreadAccessUserSupplier(() -> accessUser);
             return true;
         } else {
             if (PlatformDependentUtil.EXIST_HTTP_SERVLET && WebSecurityAccessFilter.isInLifecycle()) {
@@ -562,10 +603,10 @@ public class AccessUserUtil {
             if (isNull(accessUser)) {
                 Map<String, Object> map = new LinkedHashMap<>(1);
                 map.put(attrName, value);
-                setCurrentThreadAccessUser(map);
+                setCurrentThreadAccessUserSupplier(() -> map);
                 setterSuccess = true;
             } else {
-                setterSuccess = TypeUtil.invokeSetter(accessUser, attrName, value);
+                setterSuccess = BeanMap.invokeSetter(accessUser, attrName, value);
             }
         } else {
             if (PlatformDependentUtil.EXIST_HTTP_SERVLET && WebSecurityAccessFilter.isInLifecycle()) {
@@ -587,6 +628,18 @@ public class AccessUserUtil {
             }
         }
         return setterSuccess;
+    }
+
+    public static <V> AccessUserCallable<V> callable(Callable<V> callable) {
+        return new AccessUserCallable<>(callable);
+    }
+
+    public static AccessUserRunnable runnable(java.lang.Runnable runnable) {
+        return new AccessUserRunnable(runnable);
+    }
+
+    public static AccessUserRunnable0 runnable0(Runnable runnable) {
+        return new AccessUserRunnable0(runnable);
     }
 
     public static <T> AccessUserCompletableFuture<T> completableFuture() {
@@ -644,6 +697,138 @@ public class AccessUserUtil {
     @FunctionalInterface
     public interface Runnable {
         void run() throws Throwable;
+    }
+
+    static abstract class AbstractAccessUserSnapshot implements AccessUserSnapshot {
+        public static final String ATTR_REQUEST_ID = System.getProperty("AccessUserSnapshot.ATTR_REQUEST_ID", PlatformDependentUtil.ATTR_REQUEST_ID);
+        protected final Object accessUser;
+        protected final Object rootAccessUser;
+        protected final Thread thread = Thread.currentThread();
+        protected final boolean nullToObject;
+        protected final AtomicBoolean close = new AtomicBoolean();
+        protected final TypeEnum typeEnum;
+        protected final String requestId = PlatformDependentUtil.mdcGet(ATTR_REQUEST_ID);
+
+        protected AbstractAccessUserSnapshot(Object accessUser, Object rootAccessUser, boolean nullToObject, TypeEnum typeEnum) {
+            // 保存上下文
+            this.accessUser = accessUser;
+            this.rootAccessUser = rootAccessUser;
+            this.nullToObject = nullToObject;
+            this.typeEnum = typeEnum;
+            PlatformDependentUtil.CLOSEABLE_THREAD_LOCAL.get().addFirst(this);
+        }
+
+        @Override
+        public final Object getCurrentAccessUser() {
+            Object currentAccessUser = getCurrentAccessUser0();
+            if (nullToObject) {
+                return currentAccessUser;
+            } else {
+                return AccessUserUtil.isNull(currentAccessUser) ? null : currentAccessUser;
+            }
+        }
+
+        @Override
+        public abstract Object getCurrentAccessUserValue(String attrName);
+
+        protected abstract Object getCurrentAccessUser0();
+
+        protected abstract AccessUserSnapshot fork0();
+
+        protected abstract void setAccessUser0(Object accessUser);
+
+        protected abstract void close0();
+
+        @Override
+        public final boolean isClose() {
+            return close.get();
+        }
+
+        @Override
+        public final boolean isNullToObject() {
+            return nullToObject;
+        }
+
+        @Override
+        public final Thread getThread() {
+            return thread;
+        }
+
+        @Override
+        public final String getRequestId() {
+            return requestId;
+        }
+
+        @Override
+        public final String getCurrentRequestId() {
+            return PlatformDependentUtil.mdcGet(ATTR_REQUEST_ID);
+        }
+
+        @Override
+        public final TypeEnum getTypeEnum() {
+            return typeEnum;
+        }
+
+        @Override
+        public final Object getRootAccessUser() {
+            return rootAccessUser;
+        }
+
+        @Override
+        public final Object getAccessUser() {
+            if (nullToObject) {
+                return accessUser;
+            } else {
+                return AccessUserUtil.isNull(accessUser) ? null : accessUser;
+            }
+        }
+
+        @Override
+        public final void setAccessUser(Object accessUser, boolean mergeAccessUser) {
+            if (close.get()) {
+                throw new IllegalStateException("close");
+            }
+            // 修改上下文-的当前用户
+            Object setterAccessUser = mergeAccessUser ? AccessUserUtil.mergeAccessUser(this.accessUser, accessUser) : accessUser;
+            setAccessUser0(setterAccessUser);
+        }
+
+        @Override
+        public final void setRequestId(String requestId) {
+            PlatformDependentUtil.mdcPut(ATTR_REQUEST_ID, requestId);
+        }
+
+        @Override
+        public final void close() {
+            if (thread != Thread.currentThread()) {
+                throw new IllegalStateException("thread != Thread.currentThread(). get=" + thread + "close=" + Thread.currentThread());
+            }
+            if (close.compareAndSet(false, true)) {
+                // 回收上下文
+                PlatformDependentUtil.CLOSEABLE_THREAD_LOCAL.get().removeFirst();
+                close0();
+            }
+        }
+
+        @Override
+        public final AccessUserSnapshot fork() {
+            if (thread == Thread.currentThread()) {
+                return fork0();
+            } else if (close.get()) {
+                // 切换上下文
+                AccessUserSnapshot snapshot = AccessUserSnapshot.open(nullToObject, typeEnum, rootAccessUser);
+                snapshot.setAccessUser(accessUser, false);
+                snapshot.setRequestId(requestId);
+                return snapshot;
+            } else {
+                throw new IllegalStateException("fork old thread must state close!");
+            }
+        }
+
+        @Override
+        public String toString() {
+            return typeEnum == TypeEnum.root ? "root" : String.valueOf(accessUser);
+        }
     }
 
 }
