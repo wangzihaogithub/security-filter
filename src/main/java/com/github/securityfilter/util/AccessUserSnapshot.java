@@ -8,35 +8,36 @@ import java.util.List;
 import java.util.function.Supplier;
 
 import static com.github.securityfilter.util.PlatformDependentUtil.ACCESS_USER_THREAD_LOCAL;
-import static com.github.securityfilter.util.PlatformDependentUtil.CLOSEABLE_THREAD_LOCAL;
+import static com.github.securityfilter.util.PlatformDependentUtil.SNAPSHOT_THREAD_LOCAL;
 
 public interface AccessUserSnapshot extends AutoCloseable {
 
     enum TypeEnum {
         push,
-        root
+        root,
+        fork
     }
 
     static List<AccessUserSnapshot> list() {
-        return Collections.unmodifiableList(CLOSEABLE_THREAD_LOCAL.get());
+        return Collections.unmodifiableList(SNAPSHOT_THREAD_LOCAL.get());
     }
 
     static boolean exist() {
-        return !CLOSEABLE_THREAD_LOCAL.get().isEmpty();
+        return !SNAPSHOT_THREAD_LOCAL.get().isEmpty();
     }
 
     static AccessUserSnapshot current() {
-        LinkedList<AccessUserSnapshot> list = CLOSEABLE_THREAD_LOCAL.get();
+        LinkedList<AccessUserSnapshot> list = SNAPSHOT_THREAD_LOCAL.get();
         return list.isEmpty() ? null : list.getFirst();
     }
 
     static AccessUserSnapshot root() {
-        LinkedList<AccessUserSnapshot> list = CLOSEABLE_THREAD_LOCAL.get();
+        LinkedList<AccessUserSnapshot> list = SNAPSHOT_THREAD_LOCAL.get();
         return list.isEmpty() ? null : list.getLast();
     }
 
     static AccessUserSnapshot get(int index) {
-        LinkedList<AccessUserSnapshot> list = CLOSEABLE_THREAD_LOCAL.get();
+        LinkedList<AccessUserSnapshot> list = SNAPSHOT_THREAD_LOCAL.get();
         return list.isEmpty() || index < 0 || index >= list.size() ? null : list.get(index);
     }
 
@@ -65,13 +66,15 @@ public interface AccessUserSnapshot extends AutoCloseable {
 
     AccessUserSnapshot fork();
 
+    Object getForkAccessUser();
+
     void setRequestId(String requestId);
 
     @Override
     void close();
 
     static AccessUserSnapshot open() {
-        return open(false, AccessUserSnapshot.TypeEnum.push, AccessUserUtil.getRootAccessUser(false));
+        return open(false, AccessUserSnapshot.TypeEnum.push, AccessUserUtil.getRootAccessUser(false, false));
     }
 
     static AccessUserSnapshot open(AccessUserSnapshot.TypeEnum typeEnum, Object rootAccessUser) {

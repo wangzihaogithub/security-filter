@@ -35,18 +35,13 @@ public class DubboRequestIdCreateFilter implements Filter {
         if (requestId == null && create) {
             requestId = REQUEST_ID_SUPPLIER.get();
             setRequestId(requestId);
+            PlatformDependentUtil.mdcGet(ATTR_REQUEST_ID);
         }
         return requestId;
     }
 
     public static void setRequestId(String requestId) {
-        if (requestId == null) {
-            RpcContext.getContext().removeAttachment(ATTR_REQUEST_ID);
-            PlatformDependentUtil.mdcRemove(ATTR_REQUEST_ID);
-        } else {
-            RpcContext.getContext().setAttachment(ATTR_REQUEST_ID, requestId);
-            PlatformDependentUtil.mdcPut(ATTR_REQUEST_ID, requestId);
-        }
+        PlatformDependentUtil.mdcClose(ATTR_REQUEST_ID, requestId);
     }
 
     @Override
@@ -59,23 +54,30 @@ public class DubboRequestIdCreateFilter implements Filter {
         }
 
         Throwable throwable = null;
-        dubboBefore(invoker, invocation);
+        boolean consumerSide = RpcContext.getContext().isConsumerSide();
+        dubboBefore(invoker, invocation, consumerSide);
         try {
             return invoker.invoke(invocation);
         } catch (Throwable e) {
             throwable = e;
             throw e;
         } finally {
-            dubboAfter(invoker, invocation, throwable);
+            dubboAfter(invoker, invocation, throwable, consumerSide);
         }
     }
 
-    protected void dubboBefore(Invoker<?> invoker, Invocation invocation) {
+    protected void dubboBefore(Invoker<?> invoker, Invocation invocation, boolean consumerSide) {
         String requestId = getRequestId(true, invocation);
-        setRequestId(requestId);
+        RpcContext.getContext().setAttachment(ATTR_REQUEST_ID, requestId);
+        if (!consumerSide) {
+            PlatformDependentUtil.mdcPut(ATTR_REQUEST_ID, requestId);
+        }
     }
 
-    protected void dubboAfter(Invoker<?> invoker, Invocation invocation, Throwable throwable) {
-        setRequestId(null);
+    protected void dubboAfter(Invoker<?> invoker, Invocation invocation, Throwable throwable, boolean consumerSide) {
+        RpcContext.getContext().removeAttachment(ATTR_REQUEST_ID);
+        if (!consumerSide) {
+            PlatformDependentUtil.mdcRemove(ATTR_REQUEST_ID);
+        }
     }
 }

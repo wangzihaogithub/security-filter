@@ -7,6 +7,8 @@ import com.github.securityfilter.util.PlatformDependentUtil;
 import org.apache.dubbo.common.extension.Activate;
 import org.apache.dubbo.rpc.*;
 
+import java.util.Map;
+
 @Activate(
         group = {"consumer", "provider"},
         order = 51
@@ -58,27 +60,21 @@ public class DubboAccessUserFilter implements Filter {
 
     protected AutoCloseable newAccessUserContext(boolean consumerSide) {
         AutoCloseable result;
-        Object runOnRootAccessUser = AccessUserUtil.getRootAccessUser(false);
-        Object accessUser = AccessUserUtil.getCurrentThreadAccessUser();
-        if (accessUser != null) {
+        Object runOnRootAccessUser = AccessUserUtil.getRootAccessUser(false, false);
+        Object threadAccessUser = AccessUserUtil.getCurrentThreadAccessUser();
+        Object webAccessUser;
+        Map<String, Object> dubboAccessUser;
+        if (threadAccessUser != null) {
             // 线程上下文（Web，Dubbo（Server，Client），定时器，任务线程） 放DubboRpcContext
-            result = consumerSide ? setAttachment(accessUser, runOnRootAccessUser) : null;
+            result = consumerSide ? setAttachment(threadAccessUser, runOnRootAccessUser) : null;
+        } else if ((webAccessUser = PlatformDependentUtil.EXIST_HTTP_SERVLET ? WebSecurityAccessFilter.getCurrentAccessUserIfExist() : null) != null) {
+            // Web层请求 放DubboRpcContext
+            result = consumerSide ? setAttachment(webAccessUser, runOnRootAccessUser) : null;
+        } else if ((dubboAccessUser = DubboAccessUserUtil.getApacheAccessUser()) != null) {
+            // 服务端接收 放 线程上下文
+            result = new DubboCurrentThreadLocal(dubboAccessUser, runOnRootAccessUser);
         } else {
-            if (PlatformDependentUtil.EXIST_HTTP_SERVLET) {
-                accessUser = WebSecurityAccessFilter.getCurrentAccessUserIfExist();
-            }
-            if (accessUser != null) {
-                // Web层请求 放DubboRpcContext
-                result = consumerSide ? setAttachment(accessUser, runOnRootAccessUser) : null;
-            } else {
-                accessUser = DubboAccessUserUtil.getApacheAccessUser();
-                if (accessUser != null) {
-                    // 服务端接收 放 线程上下文
-                    result = setCurrentThread(accessUser, runOnRootAccessUser);
-                } else {
-                    result = null;
-                }
-            }
+            result = null;
         }
         return result;
     }
@@ -104,10 +100,26 @@ public class DubboAccessUserFilter implements Filter {
         return REMOVE_ATTACHMENT;
     }
 
-    public static AutoCloseable setCurrentThread(Object accessUser, Object runOnRootAccessUser) {
-        AccessUserSnapshot closeable = new AccessUserSnapshot.CurrentThreadLocal(null, runOnRootAccessUser, false, AccessUserSnapshot.TypeEnum.push);
-        closeable.setAccessUser(accessUser, false);
-        return closeable;
+    public static class DubboCurrentThreadLocal extends AccessUserSnapshot.CurrentThreadLocal {
+        private final Map<String, Object> dubboAccessUser;
+        private final String dubboRequestId = RpcContext.getContext().getAttachment(ATTR_REQUEST_ID);
+
+        public DubboCurrentThreadLocal(Map<String, Object> accessUser, Object rootAccessUser) {
+            super(null, rootAccessUser, false, TypeEnum.fork);
+            this.dubboAccessUser = accessUser;
+            setAccessUser(accessUser, false);
+            if (dubboRequestId != null) {
+                setRequestId(dubboRequestId);
+            }
+        }
+
+        public String getDubboRequestId() {
+            return dubboRequestId;
+        }
+
+        public Map<String, Object> getDubboAccessUser() {
+            return dubboAccessUser;
+        }
     }
 
 }
