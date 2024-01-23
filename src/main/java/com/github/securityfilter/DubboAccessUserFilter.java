@@ -20,6 +20,10 @@ public class DubboAccessUserFilter implements Filter {
 
     @Override
     public Result invoke(Invoker<?> invoker, Invocation invocation) throws RpcException {
+        RpcContext context = RpcContext.getContext();
+        if (context.getMethodName() == null) {
+            return invoker.invoke(invocation);
+        }
         String interfaceName = invoker.getInterface().getName();
         for (String skipInterfacePacket : skipInterfacePackets) {
             if (interfaceName.startsWith(skipInterfacePacket)) {
@@ -27,7 +31,7 @@ public class DubboAccessUserFilter implements Filter {
             }
         }
 
-        boolean consumerSide = RpcContext.getContext().isConsumerSide();
+        boolean consumerSide = context.isConsumerSide();
         Throwable throwable = null;
         dubboBefore(invoker, invocation, consumerSide);
         try {

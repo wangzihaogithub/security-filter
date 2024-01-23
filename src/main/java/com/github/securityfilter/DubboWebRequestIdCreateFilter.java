@@ -16,6 +16,10 @@ public class DubboWebRequestIdCreateFilter extends WebRequestIdCreateFilter impl
 
     @Override
     public Result invoke(Invoker<?> invoker, Invocation invocation) throws RpcException {
+        RpcContext context = RpcContext.getContext();
+        if (context.getMethodName() == null) {
+            return invoker.invoke(invocation);
+        }
         String interfaceName = invoker.getInterface().getName();
         for (String skipInterfacePacket : skipInterfacePackets) {
             if (interfaceName.startsWith(skipInterfacePacket)) {
@@ -23,7 +27,7 @@ public class DubboWebRequestIdCreateFilter extends WebRequestIdCreateFilter impl
             }
         }
         Throwable throwable = null;
-        boolean consumerSide = RpcContext.getContext().isConsumerSide();
+        boolean consumerSide = context.isConsumerSide();
         dubboBefore(invoker, invocation, consumerSide);
         try {
             return invoker.invoke(invocation);
