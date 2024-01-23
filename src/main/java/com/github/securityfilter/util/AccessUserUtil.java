@@ -19,7 +19,7 @@ public class AccessUserUtil {
             return "NULL";
         }
     };
-    public static Object NO_EXIST_ROOT = new Object() {
+    public static final Object NO_EXIST_ROOT = new Object() {
         @Override
         public String toString() {
             return "NO_EXIST_ROOT";
@@ -281,11 +281,23 @@ public class AccessUserUtil {
     }
 
     public static Map<String, Object> getRootAccessUserMap(boolean ifMissGetCurrent) {
-        Object rootAccessUser = getRootAccessUser(ifMissGetCurrent);
-        return isNotNull(rootAccessUser) && isExistRoot(rootAccessUser) ? new LinkedHashMap<>(BeanMap.toMap(rootAccessUser)) : null;
+        Object rootAccessUser = getRootAccessUser(ifMissGetCurrent, false);
+        if (rootAccessUser instanceof Map) {
+            return (Map<String, Object>) rootAccessUser;
+        } else {
+            return isNotNull(rootAccessUser) && isExistRoot(rootAccessUser) ? new LinkedHashMap<>(BeanMap.toMap(rootAccessUser)) : null;
+        }
+    }
+
+    public static Object getRootAccessUser() {
+        return getRootAccessUser(true, true);
     }
 
     public static Object getRootAccessUser(boolean ifMissGetCurrent) {
+        return getRootAccessUser(ifMissGetCurrent, true);
+    }
+
+    public static Object getRootAccessUser(boolean ifMissGetCurrent, boolean create) {
         if (EXIST_DUBBO_APACHE && DubboAccessUserUtil.isApacheAccessUser()) {
             Map<String, Object> apacheRootAccessUser = DubboAccessUserUtil.getApacheRootAccessUser();
             if (apacheRootAccessUser != null) {
@@ -293,38 +305,32 @@ public class AccessUserUtil {
             }
         }
 
-        LinkedList<AccessUserSnapshot> list = CLOSEABLE_THREAD_LOCAL.get();
-        if (list.isEmpty()) {
+        LinkedList<AccessUserSnapshot> snapshotList = SNAPSHOT_THREAD_LOCAL.get();
+        if (snapshotList.isEmpty()) {
             if (ifMissGetCurrent) {
-                Object accessUser = getAccessUserNull(false);
+                Object accessUser = getAccessUserNull(create);
                 return isNull(accessUser) ? null : accessUser;
             } else {
                 return NO_EXIST_ROOT;
             }
         } else {
-            AccessUserSnapshot[] array = list.toArray(new AccessUserSnapshot[list.size()]);
-            for (int i = array.length - 1; i >= 0; i--) {
+            AccessUserSnapshot[] array = snapshotList.toArray(new AccessUserSnapshot[snapshotList.size()]);
+            int lastIndex = array.length - 1;
+            for (int i = lastIndex; i >= 0; i--) {
                 AccessUserSnapshot snapshot = array[i];
-                if (snapshot.getTypeEnum() == AccessUserSnapshot.TypeEnum.push) {
-                    Object rootAccessUser = snapshot.getRootAccessUser();
-                    if (isExistRoot(rootAccessUser)) {
-                        return isNull(rootAccessUser) ? null : rootAccessUser;
-                    }
+                Object rootAccessUser = snapshot.getRootAccessUser();
+                if (isExistRoot(rootAccessUser)) {
+                    return isNull(rootAccessUser) ? null : rootAccessUser;
                 }
             }
-            for (int i = array.length - 1; i >= 0; i--) {
-                AccessUserSnapshot snapshot = array[i];
-                if (!(snapshot instanceof AccessUserSnapshot.Null)) {
-                    Object accessUser = snapshot.getAccessUser();
-                    return isNull(accessUser) ? null : accessUser;
-                }
-            }
+            AccessUserSnapshot snapshot = array[lastIndex];
+            Object accessUser = snapshot.getTypeEnum() == AccessUserSnapshot.TypeEnum.fork ? snapshot.getForkAccessUser() : snapshot.getAccessUser();
+            return isNull(accessUser) ? null : accessUser;
         }
-        return NO_EXIST_ROOT;
     }
 
     public static void runOnRootAccessUser(AccessUserUtil.Runnable runnable) {
-        Object rootAccessUser = getRootAccessUser(false);
+        Object rootAccessUser = getRootAccessUser(false, false);
         if (isExistRoot(rootAccessUser)) {
             try (AccessUserSnapshot snapshot = AccessUserSnapshot.open(AccessUserSnapshot.TypeEnum.root, rootAccessUser)) {
                 snapshot.setAccessUser(rootAccessUser, false);
@@ -342,7 +348,7 @@ public class AccessUserUtil {
     }
 
     public static <T> T runOnRootAccessUser(Callable0<T> runnable) {
-        Object rootAccessUser = getRootAccessUser(false);
+        Object rootAccessUser = getRootAccessUser(false, false);
         if (isExistRoot(rootAccessUser)) {
             try (AccessUserSnapshot snapshot = AccessUserSnapshot.open(AccessUserSnapshot.TypeEnum.root, rootAccessUser)) {
                 snapshot.setAccessUser(rootAccessUser, false);
@@ -484,7 +490,7 @@ public class AccessUserUtil {
      * @return 会将 {@link #NULL}对象，转为null
      */
     public static AccessUserSnapshot openSnapshot() {
-        return AccessUserSnapshot.open(AccessUserSnapshot.TypeEnum.push, getRootAccessUser(false));
+        return AccessUserSnapshot.open();
     }
 
     public static Object getAccessUserValue(String attrName) {
@@ -518,7 +524,7 @@ public class AccessUserUtil {
     }
 
     public static Object getRootAccessUserValue(String attrName) {
-        Object rootAccessUser = getRootAccessUser(true);
+        Object rootAccessUser = getRootAccessUser(true, false);
         return BeanMap.invokeGetter(rootAccessUser, attrName);
     }
 
@@ -708,6 +714,10 @@ public class AccessUserUtil {
         protected final AtomicBoolean close = new AtomicBoolean();
         protected final TypeEnum typeEnum;
         protected final String requestId = PlatformDependentUtil.mdcGet(ATTR_REQUEST_ID);
+        private final LinkedList<AccessUserSnapshot> snapshotLinkedList = SNAPSHOT_THREAD_LOCAL.get();
+        private int setAccessUserCount = 0;
+        private Object forkAccessUser;
+        private String closeRequestId;
 
         protected AbstractAccessUserSnapshot(Object accessUser, Object rootAccessUser, boolean nullToObject, TypeEnum typeEnum) {
             // 保存上下文
@@ -715,7 +725,7 @@ public class AccessUserUtil {
             this.rootAccessUser = rootAccessUser;
             this.nullToObject = nullToObject;
             this.typeEnum = typeEnum;
-            PlatformDependentUtil.CLOSEABLE_THREAD_LOCAL.get().addFirst(this);
+            snapshotLinkedList.addFirst(this);
         }
 
         @Override
@@ -788,9 +798,17 @@ public class AccessUserUtil {
             if (close.get()) {
                 throw new IllegalStateException("close");
             }
+            if (setAccessUserCount++ == 0 && typeEnum == TypeEnum.fork) {
+                forkAccessUser = accessUser;
+            }
             // 修改上下文-的当前用户
             Object setterAccessUser = mergeAccessUser ? AccessUserUtil.mergeAccessUser(this.accessUser, accessUser) : accessUser;
             setAccessUser0(setterAccessUser);
+        }
+
+        @Override
+        public Object getForkAccessUser() {
+            return forkAccessUser;
         }
 
         @Override
@@ -804,8 +822,11 @@ public class AccessUserUtil {
                 throw new IllegalStateException("thread != Thread.currentThread(). get=" + thread + "close=" + Thread.currentThread());
             }
             if (close.compareAndSet(false, true)) {
+                // 保存上下文
+                this.closeRequestId = getCurrentRequestId();
                 // 回收上下文
-                PlatformDependentUtil.CLOSEABLE_THREAD_LOCAL.get().removeFirst();
+                PlatformDependentUtil.mdcClose(ATTR_REQUEST_ID, requestId);
+                snapshotLinkedList.removeFirst();
                 close0();
             }
         }
@@ -816,9 +837,9 @@ public class AccessUserUtil {
                 return fork0();
             } else if (close.get()) {
                 // 切换上下文
-                AccessUserSnapshot snapshot = AccessUserSnapshot.open(nullToObject, typeEnum, rootAccessUser);
+                AccessUserSnapshot snapshot = AccessUserSnapshot.open(nullToObject, TypeEnum.fork, rootAccessUser);
                 snapshot.setAccessUser(accessUser, false);
-                snapshot.setRequestId(requestId);
+                snapshot.setRequestId(closeRequestId);
                 return snapshot;
             } else {
                 throw new IllegalStateException("fork old thread must state close!");

@@ -15,7 +15,7 @@ public class PlatformDependentUtil {
      */
     static final ThreadLocal<Supplier<Object>> ACCESS_USER_THREAD_LOCAL = new ThreadLocal<>();
     static final ThreadLocal<Map<String, Object>> MDC_THREAD_LOCAL = ThreadLocal.withInitial(() -> new HashMap<>(2));
-    static final ThreadLocal<LinkedList<AccessUserSnapshot>> CLOSEABLE_THREAD_LOCAL = ThreadLocal.withInitial(LinkedList::new);
+    static final ThreadLocal<LinkedList<AccessUserSnapshot>> SNAPSHOT_THREAD_LOCAL = ThreadLocal.withInitial(LinkedList::new);
 
     public static final String ATTR_REQUEST_ID =
             System.getProperty("MDC.ATTR_REQUEST_ID", "requestId");
