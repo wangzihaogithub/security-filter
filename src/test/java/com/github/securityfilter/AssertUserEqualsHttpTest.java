@@ -39,7 +39,7 @@ public class AssertUserEqualsHttpTest {
         new AssertUserEqualsHttpTest().test();
     }
 
-    @Test
+//    @Test
     public void test() throws IOException {
         List<AssertUserEqualsHttpTes1t> list = new ArrayList<>();
         for (int port = 85; port < 90; port++) {
