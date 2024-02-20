@@ -15,8 +15,27 @@ import java.util.Map;
 )
 public class DubboAccessUserFilter implements Filter {
     private static final String INVOCATION_ATTRIBUTE_KEY = System.getProperty("DubboAccessUserFilter.INVOCATION_ATTRIBUTE_KEY", "accessUser");
-
+    private static final AutoCloseable REMOVE_ATTACHMENT = () -> {
+        DubboAccessUserUtil.removeApacheAccessUser();
+        DubboAccessUserUtil.removeApacheRootAccessUser();
+    };
     private final String[] skipInterfacePackets = {"org.apache.dubbo", "com.alibaba"};
+
+    public static void setAccessUserContext(Invocation invocation, AutoCloseable accessUserContext) {
+        invocation.put(INVOCATION_ATTRIBUTE_KEY, accessUserContext);
+    }
+
+    public static AutoCloseable getAccessUserContext(Invocation invocation) {
+        return (AutoCloseable) invocation.get(INVOCATION_ATTRIBUTE_KEY);
+    }
+
+    public static AutoCloseable setAttachment(Object accessUser, Object runOnRootAccessUser) {
+        DubboAccessUserUtil.setApacheAccessUser(accessUser);
+        if (AccessUserUtil.isExistRoot(runOnRootAccessUser) && AccessUserUtil.isNotNull(accessUser)) {
+            DubboAccessUserUtil.setApacheRootAccessUser(runOnRootAccessUser);
+        }
+        return REMOVE_ATTACHMENT;
+    }
 
     @Override
     public Result invoke(Invoker<?> invoker, Invocation invocation) throws RpcException {
@@ -81,27 +100,6 @@ public class DubboAccessUserFilter implements Filter {
             result = null;
         }
         return result;
-    }
-
-    public static void setAccessUserContext(Invocation invocation, AutoCloseable accessUserContext) {
-        invocation.put(INVOCATION_ATTRIBUTE_KEY, accessUserContext);
-    }
-
-    public static AutoCloseable getAccessUserContext(Invocation invocation) {
-        return (AutoCloseable) invocation.get(INVOCATION_ATTRIBUTE_KEY);
-    }
-
-    private static final AutoCloseable REMOVE_ATTACHMENT = () -> {
-        DubboAccessUserUtil.removeApacheAccessUser();
-        DubboAccessUserUtil.removeApacheRootAccessUser();
-    };
-
-    public static AutoCloseable setAttachment(Object accessUser, Object runOnRootAccessUser) {
-        DubboAccessUserUtil.setApacheAccessUser(accessUser);
-        if (AccessUserUtil.isExistRoot(runOnRootAccessUser) && AccessUserUtil.isNotNull(accessUser)) {
-            DubboAccessUserUtil.setApacheRootAccessUser(runOnRootAccessUser);
-        }
-        return REMOVE_ATTACHMENT;
     }
 
     public static class DubboCurrentThreadLocal extends AccessUserSnapshot.CurrentThreadLocal {

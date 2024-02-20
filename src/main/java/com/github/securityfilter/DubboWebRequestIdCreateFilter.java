@@ -14,6 +14,14 @@ import javax.servlet.http.HttpServletResponse;
 public class DubboWebRequestIdCreateFilter extends WebRequestIdCreateFilter implements Filter {
     private final String[] skipInterfacePackets = {"org.apache.dubbo", "com.alibaba"};
 
+    public static void setDubboRequestId(String requestId) {
+        if (requestId == null) {
+            RpcContext.getContext().removeAttachment(ATTR_REQUEST_ID);
+        } else {
+            RpcContext.getContext().setAttachment(ATTR_REQUEST_ID, requestId);
+        }
+    }
+
     @Override
     public Result invoke(Invoker<?> invoker, Invocation invocation) throws RpcException {
         RpcContext context = RpcContext.getContext();
@@ -36,14 +44,6 @@ public class DubboWebRequestIdCreateFilter extends WebRequestIdCreateFilter impl
             throw e;
         } finally {
             dubboAfter(invoker, invocation, throwable, consumerSide);
-        }
-    }
-
-    public static void setDubboRequestId(String requestId) {
-        if (requestId == null) {
-            RpcContext.getContext().removeAttachment(ATTR_REQUEST_ID);
-        } else {
-            RpcContext.getContext().setAttachment(ATTR_REQUEST_ID, requestId);
         }
     }
 

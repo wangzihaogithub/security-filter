@@ -10,13 +10,6 @@ import java.util.concurrent.Callable;
 import java.util.function.Supplier;
 
 public class PlatformDependentUtil {
-    /**
-     * 跨线程传递当前RPC请求的用户
-     */
-    static final ThreadLocal<Supplier<Object>> ACCESS_USER_THREAD_LOCAL = new ThreadLocal<>();
-    static final ThreadLocal<Map<String, Object>> MDC_THREAD_LOCAL = ThreadLocal.withInitial(() -> new HashMap<>(2));
-    static final ThreadLocal<LinkedList<AccessUserSnapshot>> SNAPSHOT_THREAD_LOCAL = ThreadLocal.withInitial(LinkedList::new);
-
     public static final String ATTR_REQUEST_ID =
             System.getProperty("MDC.ATTR_REQUEST_ID", "requestId");
     public static final boolean EXIST_SPRING_WEB;
@@ -24,32 +17,55 @@ public class PlatformDependentUtil {
     public static final boolean EXIST_DUBBO_APACHE;
     public static final boolean EXIST_DUBBO_ALIBABA;
     public static final boolean EXIST_MDC;
-
     public static final Constructor JACKSON_OBJECT_MAPPER_CONSTRUCTOR;
     public static final Method JACKSON_WRITE_VALUE_AS_BYTES_METHOD;
     public static final Method FASTJSON_TO_JSON_STRING_METHOD;
     public static final Method MDC_GET_METHOD;
     public static final Method MDC_PUT_METHOD;
     public static final Method MDC_REMOVE_METHOD;
-
+    public static final Method MDC_GET_COPY_OF_CONTEXT_MAP;
+    public static final Method MDC_CLEAR;
+    /**
+     * 跨线程传递当前RPC请求的用户
+     */
+    static final ThreadLocal<Supplier<Object>> ACCESS_USER_THREAD_LOCAL = new ThreadLocal<>();
+    static final ThreadLocal<Map<String, Object>> MDC_THREAD_LOCAL = ThreadLocal.withInitial(() -> new HashMap<>(2));
+    static final ThreadLocal<LinkedList<AccessUserSnapshot>> SNAPSHOT_THREAD_LOCAL = ThreadLocal.withInitial(LinkedList::new);
+    private static volatile Boolean SUPPORT_MDC_GET_COPY_OF_CONTEXT_MAP;
 
     static {
         Method mdcGetMethod;
         Method mdcPutMethod;
         Method mdcRemoveMethod;
+        Method mdcGetCopyOfContextMap;
+        Method mdcClear;
         try {
             Class<?> mdc = Class.forName("org.slf4j.MDC");
             mdcGetMethod = mdc.getDeclaredMethod("get", String.class);
             mdcPutMethod = mdc.getDeclaredMethod("put", String.class, String.class);
             mdcRemoveMethod = mdc.getDeclaredMethod("remove", String.class);
+            try {
+                mdcGetCopyOfContextMap = mdc.getDeclaredMethod("getCopyOfContextMap");
+            } catch (Throwable t) {
+                mdcGetCopyOfContextMap = null;
+            }
+            try {
+                mdcClear = mdc.getDeclaredMethod("clear");
+            } catch (Throwable t) {
+                mdcClear = null;
+            }
         } catch (Throwable e) {
             mdcGetMethod = null;
             mdcPutMethod = null;
             mdcRemoveMethod = null;
+            mdcGetCopyOfContextMap = null;
+            mdcClear = null;
         }
         MDC_GET_METHOD = mdcGetMethod;
         MDC_PUT_METHOD = mdcPutMethod;
         MDC_REMOVE_METHOD = mdcRemoveMethod;
+        MDC_GET_COPY_OF_CONTEXT_MAP = mdcGetCopyOfContextMap;
+        MDC_CLEAR = mdcClear;
         EXIST_MDC = mdcGetMethod != null;
 
         boolean existSpringWeb;
@@ -118,6 +134,70 @@ public class PlatformDependentUtil {
 
     public static <E extends Throwable> void sneakyThrows(Throwable t) throws E {
         throw (E) t;
+    }
+
+    public static boolean isSupportMdcContextMap() {
+        if (SUPPORT_MDC_GET_COPY_OF_CONTEXT_MAP == null) {
+            synchronized (PlatformDependentUtil.class) {
+                if (SUPPORT_MDC_GET_COPY_OF_CONTEXT_MAP == null) {
+                    boolean support;
+                    try {
+                        Object provider = Class.forName("org.slf4j.LoggerFactory").getDeclaredMethod("getILoggerFactory").invoke(null);
+                        if (provider != null && Class.forName("org.slf4j.helpers.NOPLoggerFactory").isAssignableFrom(provider.getClass())) {
+                            support = false;
+                        } else {
+                            support = MDC_GET_COPY_OF_CONTEXT_MAP != null;
+                        }
+                    } catch (Throwable t) {
+                        support = MDC_GET_COPY_OF_CONTEXT_MAP != null;
+                    }
+                    SUPPORT_MDC_GET_COPY_OF_CONTEXT_MAP = support;
+                }
+            }
+        }
+        return SUPPORT_MDC_GET_COPY_OF_CONTEXT_MAP;
+    }
+
+    public static void mdcCloseContextMap(Map<String, String> forkMdcMap, Map<String, String> mdcMap) {
+        if (forkMdcMap != null) {
+            for (String key : forkMdcMap.keySet()) {
+                mdcRemove(key);
+            }
+        }
+        if (mdcMap != null) {
+            for (Map.Entry<String, String> entry : mdcMap.entrySet()) {
+                mdcPut(entry.getKey(), entry.getValue());
+            }
+        } else if (isSupportMdcContextMap()) {
+            Map<String, String> map = mdcGetCopyOfContextMap();
+            if (map != null && map.isEmpty()) {
+                mdcClear();
+            }
+        }
+    }
+
+    public static void mdcClear() {
+        if (MDC_CLEAR != null) {
+            try {
+                MDC_CLEAR.invoke(null);
+            } catch (IllegalAccessException | InvocationTargetException e) {
+                sneakyThrows(e);
+            }
+        }
+    }
+
+    public static Map<String, String> mdcGetCopyOfContextMap() {
+        if (MDC_GET_COPY_OF_CONTEXT_MAP != null) {
+            try {
+                Object value = MDC_GET_COPY_OF_CONTEXT_MAP.invoke(null);
+                if (value instanceof Map) {
+                    return (Map<String, String>) value;
+                }
+            } catch (IllegalAccessException | InvocationTargetException e) {
+                sneakyThrows(e);
+            }
+        }
+        return null;
     }
 
     public static String mdcGet(String key) {

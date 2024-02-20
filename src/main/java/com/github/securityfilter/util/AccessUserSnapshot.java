@@ -5,6 +5,7 @@ import com.github.securityfilter.WebSecurityAccessFilter;
 import java.util.Collections;
 import java.util.LinkedList;
 import java.util.List;
+import java.util.Map;
 import java.util.function.Supplier;
 
 import static com.github.securityfilter.util.PlatformDependentUtil.ACCESS_USER_THREAD_LOCAL;
@@ -64,11 +65,19 @@ public interface AccessUserSnapshot extends AutoCloseable {
 
     void setAccessUser(Object accessUser, boolean mergeAccessUser);
 
+    Map<String, String> getMdcMap();
+
+    Map<String, String> getForkMdcMap();
+
+    Map<String, String> getCurrentMdcMap();
+
     AccessUserSnapshot fork();
 
     Object getForkAccessUser();
 
     void setRequestId(String requestId);
+
+    void setMdcMap(Map<String,String> mdcMap);
 
     @Override
     void close();

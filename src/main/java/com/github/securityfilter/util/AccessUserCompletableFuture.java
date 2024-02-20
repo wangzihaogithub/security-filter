@@ -10,8 +10,8 @@ import java.util.function.Consumer;
 import java.util.function.Function;
 
 public class AccessUserCompletableFuture<T> extends CompletableFuture<T> {
-    public static boolean MERGE_USER = "true".equalsIgnoreCase(System.getProperty("AccessUserCompletableFuture.MERGE_USER", "false"));
     public static final String ATTR_REQUEST_ID = System.getProperty("AccessUserCompletableFuture.ATTR_REQUEST_ID", PlatformDependentUtil.ATTR_REQUEST_ID);
+    public static boolean MERGE_USER = "true".equalsIgnoreCase(System.getProperty("AccessUserCompletableFuture.MERGE_USER", "false"));
     private final Object accessUser;
     private final String requestId;
     private boolean mergeUser = MERGE_USER;
@@ -67,12 +67,12 @@ public class AccessUserCompletableFuture<T> extends CompletableFuture<T> {
         }
     }
 
-    public void setMergeUser(boolean mergeUser) {
-        this.mergeUser = mergeUser;
-    }
-
     public boolean isMergeUser() {
         return mergeUser;
+    }
+
+    public void setMergeUser(boolean mergeUser) {
+        this.mergeUser = mergeUser;
     }
 
     @Override

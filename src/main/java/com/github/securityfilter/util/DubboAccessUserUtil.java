@@ -122,7 +122,7 @@ public class DubboAccessUserUtil {
         }
     }
 
-    public <T> CompletableFuture<T> getCompletableFuture() {
+    public static <T> CompletableFuture<T> getCompletableFuture() {
         return new AccessUserCompletableFuture<>(RpcContext.getContext().getCompletableFuture());
     }
 
@@ -155,6 +155,31 @@ public class DubboAccessUserUtil {
             result.put(unwrapRootUserAttrName(attrName), value);
         }
         return result == null || result.isEmpty() ? null : result;
+    }
+
+    public static void setApacheRootAccessUser(Object accessUser) {
+        removeApacheRootAccessUser();
+        if (AccessUserUtil.isNotNull(accessUser)) {
+            Map<String, Object> beanHandler = BeanMap.toMap(accessUser);
+            RpcContext context = RpcContext.getContext();
+            for (Map.Entry<?, ?> entry : beanHandler.entrySet()) {
+                Object key = entry.getKey();
+                Object value = entry.getValue();
+                if (!(key instanceof String)) {
+                    continue;
+                }
+                String name = wrapRootUserAttrName((String) key);
+                if (value == null) {
+                    context.removeAttachment(name);
+                } else if (isBasicType(value)) {
+                    if (SUPPORT_GET_OBJECT_ATTACHMENT) {
+                        context.setObjectAttachment(name, value);
+                    } else {
+                        context.setAttachment(name, value.toString());
+                    }
+                }
+            }
+        }
     }
 
     public static Map<String, Object> getApacheAccessUser() {
@@ -267,15 +292,6 @@ public class DubboAccessUserUtil {
         return context != null && context.getMethodName() != null;
     }
 
-    public static boolean isAlibabaAccessUser() {
-        com.alibaba.dubbo.rpc.RpcContext context = com.alibaba.dubbo.rpc.RpcContext.getContext();
-        try {
-            return context != null && context.getMethodName() != null;
-        } catch (Exception e) {
-            return false;
-        }
-    }
-
     public static void setApacheAccessUser(Object accessUser) {
         removeApacheAccessUser();
         if (AccessUserUtil.isNotNull(accessUser)) {
@@ -301,28 +317,12 @@ public class DubboAccessUserUtil {
         }
     }
 
-    public static void setApacheRootAccessUser(Object accessUser) {
-        removeApacheRootAccessUser();
-        if (AccessUserUtil.isNotNull(accessUser)) {
-            Map<String, Object> beanHandler = BeanMap.toMap(accessUser);
-            RpcContext context = RpcContext.getContext();
-            for (Map.Entry<?, ?> entry : beanHandler.entrySet()) {
-                Object key = entry.getKey();
-                Object value = entry.getValue();
-                if (!(key instanceof String)) {
-                    continue;
-                }
-                String name = wrapRootUserAttrName((String) key);
-                if (value == null) {
-                    context.removeAttachment(name);
-                } else if (isBasicType(value)) {
-                    if (SUPPORT_GET_OBJECT_ATTACHMENT) {
-                        context.setObjectAttachment(name, value);
-                    } else {
-                        context.setAttachment(name, value.toString());
-                    }
-                }
-            }
+    public static boolean isAlibabaAccessUser() {
+        com.alibaba.dubbo.rpc.RpcContext context = com.alibaba.dubbo.rpc.RpcContext.getContext();
+        try {
+            return context != null && context.getMethodName() != null;
+        } catch (Exception e) {
+            return false;
         }
     }
 
