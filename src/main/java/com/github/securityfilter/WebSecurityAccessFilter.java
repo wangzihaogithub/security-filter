@@ -31,12 +31,11 @@ public class WebSecurityAccessFilter<USER_ID, ACCESS_USER> implements Filter {
     public static final Object NULL = AccessUserUtil.NULL;
     private static final ThreadLocal<HttpServletRequest> REQUEST_THREAD_LOCAL = new ThreadLocal<>();
     private static final Charset UTF_8 = Charset.forName("UTF-8");
-    private static WebSecurityAccessFilter INSTANCE;
     /**
      * 跨线程传递当前RPC请求的用户
      */
     private static final ThreadLocal<Supplier<Object>> ACCESS_USER_THREAD_LOCAL = new ThreadLocal<>();
-
+    private static WebSecurityAccessFilter INSTANCE;
     private final Set<String> accessTokenParameterNames = new LinkedHashSet<>(3);
     private final Set<String> excludeUriPatterns = new LinkedHashSet<>(3);
     private final AntPathMatcher pathMatcher = new AntPathMatcher();

@@ -12,9 +12,9 @@ import java.util.function.Supplier;
  */
 @Activate(group = {"consumer", "provider"}, order = Integer.MIN_VALUE + 100)
 public class DubboRequestIdCreateFilter implements Filter {
+    public static final String ATTR_REQUEST_ID = PlatformDependentUtil.ATTR_REQUEST_ID;
     private static final SnowflakeIdWorker ID_WORKER = new SnowflakeIdWorker();
     private static final Supplier<String> REQUEST_ID_SUPPLIER = () -> String.valueOf(ID_WORKER.nextId());
-    public static final String ATTR_REQUEST_ID = PlatformDependentUtil.ATTR_REQUEST_ID;
     private final String[] skipInterfacePackets = {"org.apache.dubbo", "com.alibaba"};
 
     public static String getRequestId(boolean create) {

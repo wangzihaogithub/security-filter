@@ -12,7 +12,6 @@ import static com.github.securityfilter.util.PlatformDependentUtil.*;
 import static com.github.securityfilter.util.TypeUtil.initialCapacity;
 
 public class AccessUserUtil {
-    public static boolean MERGE_USER = "true".equalsIgnoreCase(System.getProperty("AccessUserUtil.MERGE_USER", "false"));
     public static final Object NULL = new Object() {
         @Override
         public String toString() {
@@ -25,6 +24,7 @@ public class AccessUserUtil {
             return "NO_EXIST_ROOT";
         }
     };
+    public static boolean MERGE_USER = "true".equalsIgnoreCase(System.getProperty("AccessUserUtil.MERGE_USER", "false"));
 
     public static boolean isNotNull(Object accessUser) {
         return !isNull(accessUser);
@@ -201,16 +201,16 @@ public class AccessUserUtil {
         return supplier != null ? (ACCESS_USER) supplier.get() : null;
     }
 
-    public static void removeCurrentThreadAccessUser() {
-        ACCESS_USER_THREAD_LOCAL.remove();
-    }
-
     public static void setCurrentThreadAccessUser(Object accessUser) {
         if (accessUser == null) {
             ACCESS_USER_THREAD_LOCAL.remove();
         } else {
             ACCESS_USER_THREAD_LOCAL.set(() -> accessUser);
         }
+    }
+
+    public static void removeCurrentThreadAccessUser() {
+        ACCESS_USER_THREAD_LOCAL.remove();
     }
 
     public static void setCurrentThreadAccessUserSupplier(Supplier accessUserSupplier) {
@@ -714,9 +714,13 @@ public class AccessUserUtil {
         protected final AtomicBoolean close = new AtomicBoolean();
         protected final TypeEnum typeEnum;
         protected final String requestId = PlatformDependentUtil.mdcGet(ATTR_REQUEST_ID);
+        protected final Map<String, String> mdcMap = PlatformDependentUtil.mdcGetCopyOfContextMap();
         private final LinkedList<AccessUserSnapshot> snapshotLinkedList = SNAPSHOT_THREAD_LOCAL.get();
         private int setAccessUserCount = 0;
+        private int setMdcMapCount = 0;
         private Object forkAccessUser;
+        private Map<String, String> forkMdcMap;
+        private Map<String, String> closeMdcMap;
         private String closeRequestId;
 
         protected AbstractAccessUserSnapshot(Object accessUser, Object rootAccessUser, boolean nullToObject, TypeEnum typeEnum) {
@@ -770,6 +774,11 @@ public class AccessUserUtil {
         }
 
         @Override
+        public final void setRequestId(String requestId) {
+            PlatformDependentUtil.mdcPut(ATTR_REQUEST_ID, requestId);
+        }
+
+        @Override
         public final String getCurrentRequestId() {
             return PlatformDependentUtil.mdcGet(ATTR_REQUEST_ID);
         }
@@ -812,11 +821,6 @@ public class AccessUserUtil {
         }
 
         @Override
-        public final void setRequestId(String requestId) {
-            PlatformDependentUtil.mdcPut(ATTR_REQUEST_ID, requestId);
-        }
-
-        @Override
         public final void close() {
             if (thread != Thread.currentThread()) {
                 throw new IllegalStateException("thread != Thread.currentThread(). get=" + thread + "close=" + Thread.currentThread());
@@ -824,11 +828,44 @@ public class AccessUserUtil {
             if (close.compareAndSet(false, true)) {
                 // 保存上下文
                 this.closeRequestId = getCurrentRequestId();
-                // 回收上下文
-                PlatformDependentUtil.mdcClose(ATTR_REQUEST_ID, requestId);
+                this.closeMdcMap = getCurrentMdcMap();
+                if (typeEnum == TypeEnum.fork) {
+                    // 回收上下文
+                    if (PlatformDependentUtil.isSupportMdcContextMap()) {
+                        PlatformDependentUtil.mdcCloseContextMap(forkMdcMap, mdcMap);
+                    }
+                    PlatformDependentUtil.mdcClose(ATTR_REQUEST_ID, requestId);
+                }
                 snapshotLinkedList.removeFirst();
                 close0();
             }
+        }
+
+        @Override
+        public Map<String, String> getMdcMap() {
+            return mdcMap;
+        }
+
+        @Override
+        public void setMdcMap(Map<String, String> mdcMap) {
+            if (mdcMap != null) {
+                for (Map.Entry<String, String> entry : mdcMap.entrySet()) {
+                    mdcPut(entry.getKey(), entry.getValue());
+                }
+            }
+            if (setMdcMapCount++ == 0 && typeEnum == TypeEnum.fork) {
+                forkMdcMap = mdcMap;
+            }
+        }
+
+        @Override
+        public Map<String, String> getForkMdcMap() {
+            return forkMdcMap;
+        }
+
+        @Override
+        public Map<String, String> getCurrentMdcMap() {
+            return PlatformDependentUtil.mdcGetCopyOfContextMap();
         }
 
         @Override
@@ -840,6 +877,9 @@ public class AccessUserUtil {
                 AccessUserSnapshot snapshot = AccessUserSnapshot.open(nullToObject, TypeEnum.fork, rootAccessUser);
                 snapshot.setAccessUser(accessUser, false);
                 snapshot.setRequestId(closeRequestId);
+                if (PlatformDependentUtil.isSupportMdcContextMap()) {
+                    snapshot.setMdcMap(closeMdcMap);
+                }
                 return snapshot;
             } else {
                 throw new IllegalStateException("fork old thread must state close!");
